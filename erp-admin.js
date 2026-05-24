@@ -12,7 +12,7 @@
   var LS_THEME = 'azav_admin_theme';
 
   var state = {
-    lang: 'fr',
+    lang: 'pt',
     theme: 'dark',
     token: '',
     user: null,
@@ -29,6 +29,8 @@
     couponFilter: 'active',
     categories: [],
     orders: [],
+    ordersError: '',
+    ordersTotal: 0,
     orderFilter: '',
     orderSearch: '',
     clients: [],
@@ -38,11 +40,14 @@
     selectedOrder: null,
     productForm: null,
     categoryForm: null,
-    couponForm: null
+    couponForm: null,
+    storefront: null,
+    vitrineEditLang: 'pt',
+    adminUsers: []
   };
 
   function $(id) { return document.getElementById(id); }
-  function t() { return (global.AdminT && global.AdminT[state.lang]) || global.AdminT.fr; }
+  function t() { return (global.AdminT && global.AdminT[state.lang]) || global.AdminT.pt; }
 
   function esc(s) {
     return String(s == null ? '' : s)
@@ -67,6 +72,19 @@
 
   function toast(msg, type) {
     if (global.toast) global.toast(msg, type || 's');
+  }
+
+  function isAdminUser() {
+    return !!(state.user && String(state.user.role || 'admin').toLowerCase() === 'admin');
+  }
+
+  function fileToBase64(file) {
+    return new Promise(function (resolve, reject) {
+      var r = new FileReader();
+      r.onload = function () { resolve(r.result); };
+      r.onerror = reject;
+      r.readAsDataURL(file);
+    });
   }
 
   function getTheme() {
@@ -215,6 +233,11 @@
         logout(true);
         return false;
       }
+      state.user = state.user || {};
+      if (v.role) state.user.role = v.role;
+      if (v.email) state.user.email = v.email;
+      if (v.nome) state.user.nome = v.nome;
+      saveSession();
       return true;
     } catch (e) {
       return false;
@@ -250,10 +273,19 @@
     render();
   }
 
-  async function loadViewData() {
+  function apiErrMsg(e) {
+    if (!e) return t().error;
+    if (e.message === 'API_URL') return (t().apiBanner || '').replace(/<[^>]+>/g, '');
+    return e.message;
+  }
+
+  async function loadViewData(opts) {
+    opts = opts || {};
     if (!state.token) return;
-    state.loading = true;
-    renderMain();
+    if (!opts.silent) {
+      state.loading = true;
+      renderMain();
+    }
     try {
       if (state.view === 'dashboard') await loadDashboard();
       else if (state.view === 'products') await loadProducts();
@@ -261,15 +293,25 @@
       else if (state.view === 'orders') await loadOrders();
       else if (state.view === 'clients') await loadClients();
       else if (state.view === 'config') await loadConfig();
+      else if (state.view === 'vitrine') await loadStorefront();
+      else if (state.view === 'team') await loadAdminUsers();
       else if (state.view === 'coupons') {
         await loadCoupons();
+        if (!state.categories.length) await loadCategories();
         if (state.promoTab === 'banner') await loadConfig();
       }
     } catch (e) {
-      toast(e.message, 'e');
+      toast(apiErrMsg(e), 'e');
     }
     state.loading = false;
-    renderMain();
+    if (opts.silent && state.view === 'orders') renderOrdersPanel();
+    else renderMain();
+  }
+
+  function renderOrdersPanel() {
+    var main = $('mainContent');
+    if (!main || state.view !== 'orders' || state.loading) return;
+    main.innerHTML = renderOrders();
   }
 
   async function loadDashboard() {
@@ -291,12 +333,110 @@
     state.categories = Array.isArray(res) ? res : (res && res.categories) || [];
   }
 
+  function orderStatusLabel(code) {
+    var o = t().ord || {};
+    var map = {
+      pending: o.stPending || 'pending',
+      processing: o.stProcessing || 'processing',
+      paid: o.stPaid || 'paid',
+      shipped: o.stShipped || 'shipped',
+      delivered: o.stDelivered || 'delivered',
+      cancelled: o.stCancelled || 'cancelled',
+      em_processamento: o.stProcessing || 'processing',
+      preparacao: o.stProcessing || 'processing',
+      enviado: o.stShipped || 'shipped',
+      entregue: o.stDelivered || 'delivered',
+      cancelado: o.stCancelled || 'cancelled',
+      aguardando_pagamento: o.payPending || 'aguardando',
+      pago: o.payPaid || 'pago',
+      pago_stripe: o.payPaid || 'pago'
+    };
+    var k = String(code || '').toLowerCase().trim();
+    return map[k] || code || '—';
+  }
+
+  function orderStatusOptions(selected) {
+    var o = t().ord || {};
+    var list = [
+      { v: 'pending', l: o.stPending },
+      { v: 'processing', l: o.stProcessing },
+      { v: 'paid', l: o.stPaid },
+      { v: 'shipped', l: o.stShipped },
+      { v: 'delivered', l: o.stDelivered },
+      { v: 'cancelled', l: o.stCancelled }
+    ];
+    return list.map(function (it) {
+      return '<option value="' + it.v + '"' + (String(selected) === it.v ? ' selected' : '') + '>' + esc(it.l || it.v) + '</option>';
+    }).join('');
+  }
+
+  function payStatusOptions(selected) {
+    var o = t().ord || {};
+    var list = [
+      { v: 'aguardando_pagamento', l: o.payPending },
+      { v: 'pending', l: o.payPending },
+      { v: 'pago', l: o.payPaid },
+      { v: 'pago_stripe', l: o.payStripe },
+      { v: 'paid', l: o.payPaid },
+      { v: 'cancelled', l: o.payCancelled }
+    ];
+    var sel = String(selected || '').toLowerCase();
+    var html = list.map(function (it) {
+      return '<option value="' + it.v + '"' + (sel === it.v ? ' selected' : '') + '>' + esc(it.l || it.v) + '</option>';
+    }).join('');
+    if (selected && !list.some(function (it) { return it.v === sel; })) {
+      html += '<option value="' + esc(selected) + '" selected>' + esc(selected) + '</option>';
+    }
+    return html;
+  }
+
+  function shipStatusOptions(selected) {
+    var o = t().ord || {};
+    var list = [
+      { v: 'pending', l: o.shipPending },
+      { v: 'preparacao', l: o.shipPrep },
+      { v: 'em_transito', l: o.shipTransit },
+      { v: 'shipped', l: o.shipShipped },
+      { v: 'delivered', l: o.shipDelivered },
+      { v: 'entregue', l: o.shipDelivered }
+    ];
+    var sel = String(selected || '').toLowerCase();
+    var html = list.map(function (it) {
+      return '<option value="' + it.v + '"' + (sel === it.v ? ' selected' : '') + '>' + esc(it.l || it.v) + '</option>';
+    }).join('');
+    if (selected && !list.some(function (it) { return it.v === sel; })) {
+      html += '<option value="' + esc(selected) + '" selected>' + esc(selected) + '</option>';
+    }
+    return html;
+  }
+
   async function loadOrders() {
-    var filters = {};
+    var filters = { limit: 300 };
     if (state.orderFilter) filters.status = state.orderFilter;
     if (state.orderSearch) filters.search = state.orderSearch;
     var res = await erpCall('getOrders', filters);
-    state.orders = (res && res.success && res.orders) ? res.orders : [];
+    if (!res || !res.success) {
+      state.orders = [];
+      state.ordersTotal = 0;
+      state.ordersError = (res && res.error) ? String(res.error) : t().error;
+      return;
+    }
+    state.ordersError = '';
+    state.orders = res.orders || [];
+    state.ordersTotal = res.total != null ? res.total : state.orders.length;
+  }
+
+  function orderStatusBadge(ord) {
+    var est = String(ord.estado || '').toLowerCase();
+    var pay = String(ord.estado_pagamento || '').toLowerCase();
+    var cls = 'badge badge-draft';
+    if (est === 'cancelled' || est === 'cancelado') cls = 'badge badge-draft';
+    else if (est === 'shipped' || est === 'delivered' || est === 'enviado' || est === 'entregue') cls = 'badge badge-pub';
+    else if (est === 'processing' || est === 'em_processamento' || est === 'preparacao') cls = 'badge badge-sched';
+    else if (est === 'pending' || pay.indexOf('aguard') >= 0) cls = 'badge badge-sched';
+    var lbl = orderStatusLabel(ord.estado);
+    if (ord.estado_pagamento) lbl += ' · ' + orderStatusLabel(ord.estado_pagamento);
+    return '<span class="' + cls + '">' + esc(lbl) + '</span>';
   }
 
   async function loadClients() {
@@ -311,29 +451,69 @@
     if (res && res.success) state.config = res.config || {};
   }
 
+  async function loadStorefront() {
+    var res = await erpCall('getStoreData', {});
+    if (!res || !res.success) return;
+    var st = res.settings || {};
+    state.storefront = {
+      storeName: res.storeName || '',
+      logoUrl: res.logoUrl || '',
+      heroBgUrl: res.heroBgUrl || '',
+      tagline: res.tagline || '',
+      colors: res.colors || { main: '#1a1a1a', accent: '#c9a96e' },
+      defaultLang: res.defaultLang || 'pt',
+      content: res.content || {},
+      social: res.social || {},
+      promoOn: st.promo_banner_enabled,
+      promoText: st.promo_banner_text || ''
+    };
+    if (!state.vitrineEditLang) state.vitrineEditLang = state.storefront.defaultLang || 'pt';
+  }
+
+  async function loadAdminUsers() {
+    if (!isAdminUser()) {
+      state.adminUsers = [];
+      return;
+    }
+    var res = await erpCall('listAdminUsers', {});
+    state.adminUsers = (res && res.success && res.users) ? res.users : [];
+  }
+
   async function loadCoupons() {
     var res = await erpCall('getCoupons', {});
     state.coupons = (res && res.success && res.coupons) ? res.coupons : [];
   }
 
+  function navIcon(id) {
+    if (global.IconUi && global.IconUi.nav) return global.IconUi.nav(id);
+    return '◆';
+  }
+
   function navItems() {
     var n = t().nav;
-    return [
-      { id: 'dashboard', label: n.dashboard, icon: '◆' },
-      { id: 'products', label: n.products, icon: '◇' },
-      { id: 'orders', label: n.orders, icon: '◆' },
-      { id: 'categories', label: n.categories, icon: '◇' },
-      { id: 'clients', label: n.clients, icon: '◇' },
-      { id: 'config', label: n.config, icon: '◆' },
-      { id: 'coupons', label: (n.promotions || n.coupons), icon: '◇' }
+    var items = [
+      { id: 'dashboard', label: n.dashboard },
+      { id: 'products', label: n.products },
+      { id: 'orders', label: n.orders },
+      { id: 'categories', label: n.categories },
+      { id: 'clients', label: n.clients },
+      { id: 'vitrine', label: n.vitrine },
+      { id: 'config', label: n.config },
+      { id: 'coupons', label: (n.promotions || n.coupons) }
     ];
+    if (isAdminUser()) items.splice(items.length - 1, 0, { id: 'team', label: n.team });
+    return items;
   }
 
   function renderNavHtml() {
     return navItems().map(function (it) {
       return '<button type="button" class="nav-item' + (state.view === it.id ? ' on' : '') + '" data-view="' + it.id + '" onclick="Admin.setView(\'' + it.id + '\');Admin.closeSidebar()">' +
-        '<span class="nav-ico">' + it.icon + '</span><span>' + esc(it.label) + '</span></button>';
+        '<span class="nav-ico">' + navIcon(it.id) + '</span><span>' + esc(it.label) + '</span></button>';
     }).join('');
+  }
+
+  function logoError(el) {
+    if (global.IconUi && global.IconUi.logoError) global.IconUi.logoError(el);
   }
 
   function renderLogin() {
@@ -341,7 +521,8 @@
     $('app').innerHTML =
       '<div class="login-wrap">' +
       '<div class="login-card">' +
-      '<img src="icons/logo.png" alt="AZAVISION" class="login-logo"/>' +
+      '<img src="icons/logo.png" alt="AZAVISION" class="login-logo" onerror="Admin.logoError(this)"/>' +
+      '<span class="logo-fallback-text">AZAVISION</span>' +
       '<h1>' + esc(a.loginTitle) + '</h1>' +
       (!apiOk() ? '<p class="api-warn">' + a.apiBanner + '</p>' : '') +
       '<div class="field"><label>' + esc(a.email) + '</label><input id="loginEmail" type="email" autocomplete="username"/></div>' +
@@ -364,7 +545,7 @@
       '<div class="admin-shell">' +
       '<div class="sidebar-overlay" id="sidebarOverlay" onclick="Admin.closeSidebar()"></div>' +
       '<aside class="sidebar" id="sidebar">' +
-      '<div class="sidebar-head"><img src="icons/logo-nav.png" alt="AZAVISION"/><span>' + esc(a.appTitle) + '</span></div>' +
+      '<div class="sidebar-head"><img src="icons/logo-nav.png" alt="AZAVISION" onerror="Admin.logoError(this)"/><span class="logo-fallback-text">AZAVISION</span><span>' + esc(a.appTitle) + '</span></div>' +
       '<nav class="sidebar-nav">' + renderNavHtml() + '</nav>' +
       '<button type="button" class="nav-item logout" onclick="Admin.logout()">' + esc(a.logout) + '</button>' +
       '</aside>' +
@@ -382,10 +563,10 @@
       '<main class="main" id="mainContent"></main>' +
       '</div></div>' +
       '<nav class="mob-bar" id="mobBar">' +
-      '<button type="button" class="' + (state.view === 'dashboard' ? 'on' : '') + '" onclick="Admin.setView(\'dashboard\')"><span>◆</span>' + esc(a.nav.dashboard) + '</button>' +
-      '<button type="button" class="' + (state.view === 'products' ? 'on' : '') + '" onclick="Admin.setView(\'products\')"><span>◇</span>' + esc(a.nav.products) + '</button>' +
-      '<button type="button" class="' + (state.view === 'orders' ? 'on' : '') + '" onclick="Admin.setView(\'orders\')"><span>◆</span>' + esc(a.nav.orders) + '</button>' +
-      '<button type="button" onclick="Admin.toggleSidebar()"><span>☰</span>' + esc(a.nav.more) + '</button>' +
+      '<button type="button" class="' + (state.view === 'dashboard' ? 'on' : '') + '" onclick="Admin.setView(\'dashboard\')"><span class="mob-ico">' + navIcon('dashboard') + '</span>' + esc(a.nav.dashboard) + '</button>' +
+      '<button type="button" class="' + (state.view === 'products' ? 'on' : '') + '" onclick="Admin.setView(\'products\')"><span class="mob-ico">' + navIcon('products') + '</span>' + esc(a.nav.products) + '</button>' +
+      '<button type="button" class="' + (state.view === 'orders' ? 'on' : '') + '" onclick="Admin.setView(\'orders\')"><span class="mob-ico">' + navIcon('orders') + '</span>' + esc(a.nav.orders) + '</button>' +
+      '<button type="button" onclick="Admin.toggleSidebar()"><span class="mob-ico">' + (global.IconUi && global.IconUi.nav ? global.IconUi.nav('menu') : '☰') + '</span>' + esc(a.nav.more) + '</button>' +
       '</nav>';
   }
 
@@ -394,7 +575,7 @@
     var title = $('topTitle');
     if (!main) return;
     if (title) {
-      var titles = { dashboard: t().dash.title, products: t().prod.title, categories: t().cat.title, orders: t().ord.title, clients: t().cli.title, config: t().cfg.title, coupons: (t().promo && t().promo.title) || t().cup.title };
+      var titles = { dashboard: t().dash.title, products: t().prod.title, categories: t().cat.title, orders: t().ord.title, clients: t().cli.title, vitrine: (t().vit && t().vit.title) || 'Vitrine', team: (t().team && t().team.title) || 'Team', config: t().cfg.title, coupons: (t().promo && t().promo.title) || t().cup.title };
       title.textContent = titles[state.view] || '';
     }
     if (state.loading) {
@@ -406,6 +587,8 @@
     else if (state.view === 'categories') main.innerHTML = renderCategories();
     else if (state.view === 'orders') main.innerHTML = renderOrders();
     else if (state.view === 'clients') main.innerHTML = renderClients();
+    else if (state.view === 'vitrine') main.innerHTML = renderVitrine();
+    else if (state.view === 'team') main.innerHTML = renderTeam();
     else if (state.view === 'config') main.innerHTML = renderConfig();
     else if (state.view === 'coupons') main.innerHTML = proApi ? proApi.renderPromotions() : renderCoupons();
   }
@@ -478,21 +661,27 @@
 
   function renderOrders() {
     var o = t().ord;
-    return '<div class="toolbar">' +
+    var err = state.ordersError ? '<p class="api-warn">' + esc(state.ordersError) + '</p>' : '';
+    var countHint = state.orders.length ? '<p class="hint-block">' + state.orders.length + (state.ordersTotal > state.orders.length ? ' / ' + state.ordersTotal : '') + '</p>' : '';
+    return err + countHint + '<div class="toolbar">' +
       '<input class="search-in" placeholder="' + esc(t().search) + '" value="' + esc(state.orderSearch) + '" oninput="Admin.setOrderSearch(this.value)"/>' +
       '<select class="select-in" onchange="Admin.setOrderFilter(this.value)">' +
       '<option value=""' + (!state.orderFilter ? ' selected' : '') + '>' + esc(o.filterAll) + '</option>' +
       '<option value="pending"' + (state.orderFilter === 'pending' ? ' selected' : '') + '>' + esc(o.filterPending) + '</option>' +
+      '<option value="processing"' + (state.orderFilter === 'processing' ? ' selected' : '') + '>' + esc(o.filterProcessing) + '</option>' +
       '<option value="paid"' + (state.orderFilter === 'paid' ? ' selected' : '') + '>' + esc(o.filterPaid) + '</option>' +
       '<option value="shipped"' + (state.orderFilter === 'shipped' ? ' selected' : '') + '>' + esc(o.filterShipped) + '</option>' +
+      '<option value="delivered"' + (state.orderFilter === 'delivered' ? ' selected' : '') + '>' + esc(o.filterDelivered) + '</option>' +
+      '<option value="cancelled"' + (state.orderFilter === 'cancelled' ? ' selected' : '') + '>' + esc(o.filterCancelled) + '</option>' +
       '</select>' +
+      '<button type="button" class="btn-ghost" onclick="Admin.refreshOrders()" title="Refresh">↻</button>' +
       '<button type="button" class="btn-ghost" onclick="Admin.exportOrders()">' + esc(o.exportCsv) + '</button></div>' +
-      '<div class="table-wrap"><table class="data-table"><thead><tr><th>' + esc(o.id) + '</th><th>' + esc(o.date) + '</th><th>' + esc(o.client) + '</th><th>' + esc(o.total) + '</th><th>' + esc(o.status) + '</th><th></th></tr></thead><tbody>' +
-      (state.orders.length ? state.orders.slice(0, 80).map(function (ord) {
-        var oid = esc(ord.pedido_id).replace(/'/g, "\\'");
-        return '<tr><td><strong>' + esc(ord.pedido_id) + '</strong></td><td>' + esc(ord.data) + '</td><td>' + esc(ord.email || ord.cliente_id) + '</td><td>' + esc(ord.total) + ' €</td><td>' + esc(ord.estado) + '</td>' +
-          '<td><button type="button" class="btn-sm" onclick="Admin.openOrder(\'' + oid + '\')">' + esc(t().edit) + '</button></td></tr>';
-      }).join('') : '<tr><td colspan="6" class="muted">' + esc(t().noData) + '</td></tr>') +
+      '<div class="table-wrap"><table class="data-table ord-table"><thead><tr><th>' + esc(o.id) + '</th><th>' + esc(o.date) + '</th><th>' + esc(o.client) + '</th><th>' + esc(o.total) + '</th><th>' + esc(o.status) + '</th><th></th></tr></thead><tbody>' +
+      (state.orders.length ? state.orders.map(function (ord) {
+        var oid = esc(String(ord.pedido_id || '')).replace(/'/g, "\\'");
+        return '<tr><td><strong>' + esc(ord.pedido_id) + '</strong></td><td>' + esc(ord.data) + '</td><td>' + esc(ord.email || ord.cliente_id) + '</td><td>' + esc(ord.total) + ' €</td><td>' + orderStatusBadge(ord) + '</td>' +
+          '<td class="actions"><button type="button" class="btn-sm" onclick="Admin.openOrder(\'' + oid + '\')">' + esc(t().edit) + '</button></td></tr>';
+      }).join('') : '<tr><td colspan="6" class="muted">' + esc(state.ordersError || t().noData) + '</td></tr>') +
       '</tbody></table></div>';
   }
 
@@ -534,7 +723,7 @@
       field('cfg_store_email', c.storeEmail, cfgVal('store_email', '')) +
       field('cfg_contact_email', c.publicEmail, cfgVal('contact_public_email', '')) +
       field('cfg_whatsapp', c.whatsapp, cfgVal('contact_whatsapp', '')) +
-      field('cfg_lang', c.lang, cfgVal('default_lang', 'fr')) +
+      field('cfg_lang', c.lang, cfgVal('default_lang', 'pt')) +
       '</section>' +
       '<button type="submit" class="btn-primary wide">' + esc(t().save) + '</button></form>';
   }
@@ -546,6 +735,206 @@
   function check(id, label, val) {
     var on = val === '1' || val === 1 || String(val).toLowerCase() === 'true';
     return '<label class="check-row"><input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '/> ' + esc(label) + '</label>';
+  }
+
+  function vitrineLangBlock() {
+    var v = t().vit || {};
+    var lg = state.vitrineEditLang || 'pt';
+    var sf = state.storefront || {};
+    var c = (sf.content && sf.content[lg]) || {};
+    var langs = ['pt', 'fr', 'en', 'es'];
+    return '<div class="lang-tabs">' + langs.map(function (code) {
+      return '<button type="button" class="tab' + (lg === code ? ' on' : '') + '" onclick="Admin.setVitrineLang(\'' + code + '\')">' + code.toUpperCase() + '</button>';
+    }).join('') + '</div>' +
+      field('vit_hEye', v.hEye, c.hEye || '') +
+      field('vit_hTitle', v.hTitle, c.hTitle || '') +
+      field('vit_hSub', v.hSub, c.hSub || '') +
+      '<div class="fgrid">' + field('vit_hBtn1', v.hBtn1, c.hBtn1 || '') + field('vit_hBtn2', v.hBtn2, c.hBtn2 || '') + '</div>' +
+      '<div class="fgrid">' + field('vit_shopLabel', v.shopLabel, c.shopLabel || '') + field('vit_shopTitle', v.shopTitle, c.shopTitle || '') + '</div>' +
+      field('vit_fDesc', v.fDesc, c.fDesc || '');
+  }
+
+  function renderVitrine() {
+    var v = t().vit || {};
+    var sf = state.storefront || {};
+    var colors = sf.colors || {};
+    var social = sf.social || {};
+    var heroUrl = sf.heroBgUrl || '';
+    var promoOn = sf.promoOn === '1' || sf.promoOn === 1 || String(sf.promoOn).toLowerCase() === 'true';
+    return '<p class="hint-block">' + esc(v.subtitle) + '</p>' +
+      '<form class="config-form" onsubmit="event.preventDefault();Admin.saveStorefront()">' +
+      '<section class="panel"><h2>' + esc(v.brand) + '</h2>' +
+      field('vit_store_name', v.storeName, sf.storeName || '') +
+      field('vit_logo_url', v.logoUrl, sf.logoUrl || '') +
+      '<div class="field"><label>' + esc(v.heroBg) + '</label>' +
+      (heroUrl ? '<div class="hero-preview"><img id="vitHeroPreview" src="' + esc(heroUrl) + '" alt=""/></div>' : '<div class="hero-preview empty" id="vitHeroPreviewWrap"><span>' + esc(v.heroUpload) + '</span></div>') +
+      '<input type="file" accept="image/*" id="vit_hero_file" onchange="Admin.uploadHeroBg(this)"/>' +
+      field('vit_hero_bg_url', v.heroUrl, heroUrl) +
+      '</div>' +
+      '<div class="fgrid">' +
+      field('vit_color_main', v.colorMain, colors.main || '#1a1a1a') +
+      field('vit_color_accent', v.colorAccent, colors.accent || '#c9a96e') +
+      '</div>' +
+      field('vit_def_lang', v.defLang, sf.defaultLang || 'pt') +
+      '</section>' +
+      '<section class="panel"><h2>' + esc(v.texts) + '</h2>' +
+      '<p class="hint-block">' + esc(v.langTab) + '</p>' +
+      vitrineLangBlock() +
+      '</section>' +
+      '<section class="panel"><h2>' + esc(v.social) + '</h2>' +
+      '<div class="fgrid">' +
+      field('vit_social_insta', v.instagram, social.instagram || '') +
+      field('vit_social_fb', v.facebook, social.facebook || '') +
+      '</div>' +
+      '<div class="fgrid">' +
+      field('vit_social_pin', v.pinterest, social.pinterest || '') +
+      field('vit_social_tik', v.tiktok, social.tiktok || '') +
+      '</div>' +
+      '</section>' +
+      '<section class="panel"><h2>' + esc(v.promo) + '</h2>' +
+      check('vit_promo_on', v.promoOn, promoOn ? '1' : '0') +
+      field('vit_promo_text', v.promoText, sf.promoText || '') +
+      '</section>' +
+      '<button type="submit" class="btn-primary wide">' + esc(t().save) + '</button></form>';
+  }
+
+  function collectVitrineLangFields() {
+    if (!state.storefront) state.storefront = { content: {} };
+    if (!state.storefront.content) state.storefront.content = {};
+    var lg = state.vitrineEditLang || 'pt';
+    state.storefront.content[lg] = {
+      hEye: val('vit_hEye'),
+      hTitle: val('vit_hTitle'),
+      hSub: val('vit_hSub'),
+      hBtn1: val('vit_hBtn1'),
+      hBtn2: val('vit_hBtn2'),
+      shopLabel: val('vit_shopLabel'),
+      shopTitle: val('vit_shopTitle'),
+      fDesc: val('vit_fDesc')
+    };
+  }
+
+  function setVitrineLang(lg) {
+    collectVitrineLangFields();
+    state.vitrineEditLang = lg;
+    renderMain();
+  }
+
+  async function uploadHeroBg(input) {
+    var v = t().vit || {};
+    var file = input && input.files && input.files[0];
+    if (!file) return;
+    if (file.size > 8 * 1024 * 1024) { toast(v.imgSizeError || 'Image too large', 'e'); return; }
+    try {
+      toast(v.uploading || t().loading, 'i');
+      var dataUrl = await fileToBase64(file);
+      var b64 = String(dataUrl).split(',')[1] || dataUrl;
+      var res = await erpCall('uploadVitrineImage', { base64: b64, mimeType: file.type || 'image/jpeg', purpose: 'hero_bg' });
+      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
+      if (!state.storefront) state.storefront = {};
+      state.storefront.heroBgUrl = res.url;
+      var urlEl = $('vit_hero_bg_url');
+      if (urlEl) urlEl.value = res.url;
+      renderMain();
+      toast(t().saved, 's');
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
+    if (input) input.value = '';
+  }
+
+  async function saveStorefront() {
+    collectVitrineLangFields();
+    var sf = state.storefront || { content: {} };
+    try {
+      var res = await erpCall('updateStorefront', {
+        storeName: val('vit_store_name'),
+        logoUrl: val('vit_logo_url'),
+        heroBgUrl: val('vit_hero_bg_url') || sf.heroBgUrl,
+        color_main: val('vit_color_main'),
+        color_accent: val('vit_color_accent'),
+        defaultLang: val('vit_def_lang'),
+        social_instagram: val('vit_social_insta'),
+        social_facebook: val('vit_social_fb'),
+        social_pinterest: val('vit_social_pin'),
+        social_tiktok: val('vit_social_tik'),
+        promo_banner_enabled: chk('vit_promo_on'),
+        promo_banner_text: val('vit_promo_text'),
+        content: sf.content
+      });
+      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
+      toast(t().saved, 's');
+      await loadStorefront();
+      renderMain();
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
+  }
+
+  function renderTeam() {
+    var tm = t().team || {};
+    if (!isAdminUser()) {
+      return '<p class="api-warn">' + esc(tm.adminOnly) + '</p>';
+    }
+    return '<p class="hint-block">' + esc(tm.subtitle) + '</p>' +
+      '<div class="toolbar"><button type="button" class="btn-primary" onclick="Admin.editAdminUser(null)">' + esc(tm.newUser) + '</button></div>' +
+      '<div class="table-wrap"><table class="data-table"><thead><tr><th>' + esc(tm.name) + '</th><th>' + esc(tm.email) + '</th><th>' + esc(tm.role) + '</th><th>' + esc(tm.status) + '</th><th></th></tr></thead><tbody>' +
+      (state.adminUsers.length ? state.adminUsers.map(function (u) {
+        var uid = esc(u.user_id).replace(/'/g, "\\'");
+        var roleLbl = u.role === 'admin' ? (tm.roleAdmin || 'admin') : (tm.roleStaff || 'staff');
+        var stLbl = String(u.status || '').toLowerCase() === 'ativo' ? (tm.statusActive || 'ativo') : (tm.statusInactive || 'inativo');
+        return '<tr><td>' + esc(u.nome) + '</td><td>' + esc(u.email) + '</td><td>' + esc(roleLbl) + '</td><td>' + esc(stLbl) + '</td>' +
+          '<td><button type="button" class="btn-sm" onclick="Admin.editAdminUser(\'' + uid + '\')">' + esc(t().edit) + '</button></td></tr>';
+      }).join('') : '<tr><td colspan="5" class="muted">' + esc(t().noData) + '</td></tr>') +
+      '</tbody></table></div>';
+  }
+
+  function editAdminUser(userId) {
+    var tm = t().team || {};
+    if (!isAdminUser()) { toast(tm.adminOnly, 'e'); return; }
+    var u = null;
+    if (userId) u = state.adminUsers.find(function (x) { return x.user_id === userId; });
+    var isNew = !u;
+    openModal(
+      '<div class="modal-inner"><h2>' + esc(isNew ? tm.newUser : tm.editUser) + '</h2>' +
+      '<input type="hidden" id="au_id" value="' + esc(u ? u.user_id : '') + '"/>' +
+      field('au_nome', tm.name, u ? u.nome : '') +
+      field('au_email', tm.email, u ? u.email : '') +
+      field('au_pass', isNew ? tm.password : tm.newPassword, '') +
+      '<div class="field"><label>' + esc(tm.role) + '</label><select id="au_role">' +
+      '<option value="staff"' + (!u || u.role !== 'admin' ? ' selected' : '') + '>' + esc(tm.roleStaff) + '</option>' +
+      '<option value="admin"' + (u && u.role === 'admin' ? ' selected' : '') + '>' + esc(tm.roleAdmin) + '</option></select></div>' +
+      '<div class="field"><label>' + esc(tm.status) + '</label><select id="au_status">' +
+      '<option value="ativo"' + (!u || String(u.status).toLowerCase() === 'ativo' ? ' selected' : '') + '>' + esc(tm.statusActive) + '</option>' +
+      '<option value="inativo"' + (u && String(u.status).toLowerCase() === 'inativo' ? ' selected' : '') + '>' + esc(tm.statusInactive) + '</option></select></div>' +
+      '<div class="modal-actions"><button type="button" class="btn-ghost" onclick="Admin.closeModal()">' + esc(t().cancel) + '</button>' +
+      '<button type="button" class="btn-primary" onclick="Admin.saveAdminUser()">' + esc(t().save) + '</button></div></div>'
+    );
+  }
+
+  async function saveAdminUser() {
+    var tm = t().team || {};
+    if (!isAdminUser()) { toast(tm.adminOnly, 'e'); return; }
+    var id = val('au_id');
+    var payload = {
+      nome: val('au_nome'),
+      email: val('au_email'),
+      password: val('au_pass'),
+      role: val('au_role'),
+      status: val('au_status')
+    };
+    try {
+      var res;
+      if (id) {
+        payload.user_id = id;
+        if (!payload.password) delete payload.password;
+        res = await erpCall('updateAdminUser', payload);
+      } else {
+        if (!payload.email || !payload.password) { toast(tm.password, 'e'); return; }
+        res = await erpCall('createAdminUser', payload);
+      }
+      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
+      closeModal();
+      toast(!id ? (tm.created || t().saved) : t().saved, 's');
+      await loadAdminUsers();
+      renderMain();
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
   }
 
   function renderCoupons() {
@@ -575,12 +964,20 @@
   function setOrderSearch(v) {
     state.orderSearch = v;
     clearTimeout(_searchT);
-    _searchT = setTimeout(loadViewData, 400);
+    _searchT = setTimeout(function () { loadViewData({ silent: true }); }, 550);
   }
 
   function setOrderFilter(v) {
     state.orderFilter = v;
-    loadViewData();
+    loadViewData({ silent: true });
+  }
+
+  function refreshOrders() {
+    if (state.view !== 'orders') {
+      setView('orders');
+      return;
+    }
+    loadViewData({ silent: false });
   }
 
   function setClientSearch(v) {
@@ -723,62 +1120,82 @@
   }
 
   async function openOrder(orderId) {
+    orderId = String(orderId || '').trim();
+    if (!orderId) return;
+    var btn = document.activeElement;
+    if (btn && btn.disabled !== undefined) btn.disabled = true;
     try {
       var res = await erpCall('getOrder', { orderId: orderId });
       if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
       state.selectedOrder = res;
       var o = t().ord;
-      var ord = res.order;
+      var ord = res.order || {};
       var ent = res.entrega || {};
       var lines = (res.details || []).map(function (d) {
         return '<li>' + esc(d.nome_produto || d.produto_id) + ' × ' + esc(d.quantidade) + ' — ' + esc(d.preco) + ' €</li>';
       }).join('');
+      if (!lines) lines = '<li class="muted">' + esc(t().noData) + '</li>';
+      var curEst = String(ord.estado || 'pending').toLowerCase();
+      if (curEst === 'em_processamento' || curEst === 'preparacao') curEst = 'processing';
       openModal(
-        '<div class="modal-inner"><h2>' + esc(o.detail) + ' #' + esc(ord.pedido_id) + '</h2>' +
-        '<p class="muted">' + esc(ord.data) + ' · ' + esc(ord.email) + ' · <strong>' + esc(ord.total) + ' €</strong></p>' +
+        '<div class="modal-inner"><h2>' + esc(o.detail) + ' #' + esc(ord.pedido_id || orderId) + '</h2>' +
+        '<p class="hint-block">' + esc(ord.data) + ' · ' + esc(ord.email) + ' · <strong>' + esc(ord.total) + ' €</strong></p>' +
         '<ul class="order-lines">' + lines + '</ul>' +
-        '<div class="field"><label>' + esc(o.status) + '</label><select id="of_estado">' +
-        ['pending', 'paid', 'processing', 'shipped', 'delivered', 'cancelled'].map(function (s) {
-          return '<option value="' + s + '"' + (ord.estado === s ? ' selected' : '') + '>' + s + '</option>';
-        }).join('') + '</select></div>' +
-        '<div class="fgrid"><div class="field"><label>' + esc(o.pay) + '</label><input id="of_pay" value="' + esc(ord.estado_pagamento || '') + '"/></div>' +
-        '<div class="field"><label>' + esc(o.ship) + '</label><input id="of_ship" value="' + esc(ord.estado_envio || '') + '"/></div></div>' +
+        '<div class="field"><label>' + esc(o.status) + '</label><select id="of_estado">' + orderStatusOptions(curEst) + '</select></div>' +
+        '<div class="fgrid"><div class="field"><label>' + esc(o.pay) + '</label><select id="of_pay">' + payStatusOptions(ord.estado_pagamento) + '</select></div>' +
+        '<div class="field"><label>' + esc(o.ship) + '</label><select id="of_ship">' + shipStatusOptions(ord.estado_envio) + '</select></div></div>' +
+        '<button type="button" class="btn-ghost" style="margin-bottom:12px" onclick="Admin.setOrderQuick(\'processing\')">' + esc(o.markProcessing) + '</button>' +
         '<div class="fgrid"><div class="field"><label>' + esc(o.carrier) + '</label><input id="of_carrier" value="' + esc(ent.transportadora || 'CTT') + '"/></div>' +
         '<div class="field"><label>' + esc(o.tracking) + '</label><input id="of_track" value="' + esc(ent.tracking_number || ord.tracking_number || '') + '"/></div></div>' +
-        '<div class="field"><label>' + esc(o.notes) + '</label><input id="of_notes" value="' + esc(ord.notas || '') + '"/></div>' +
+        '<div class="field"><label>' + esc(o.notes) + '</label><textarea id="of_notes" rows="2">' + esc(ord.notas || '') + '</textarea></div>' +
         '<div class="modal-actions"><button type="button" class="btn-ghost" onclick="Admin.closeModal()">' + esc(t().cancel) + '</button>' +
-        '<button type="button" class="btn-primary" onclick="Admin.saveOrder(\'' + esc(orderId).replace(/'/g, "\\'") + '\')">' + esc(o.updateStatus) + '</button></div></div>'
+        '<button type="button" class="btn-primary" id="btnSaveOrder" onclick="Admin.saveOrder(\'' + esc(orderId).replace(/'/g, "\\'") + '\')">' + esc(o.updateStatus) + '</button></div></div>'
       );
-    } catch (e) { toast(e.message, 'e'); }
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
+    finally { if (btn && btn.disabled !== undefined) btn.disabled = false; }
+  }
+
+  function setOrderQuick(estado) {
+    var el = $('of_estado');
+    if (el) el.value = estado;
+    if (estado === 'processing') {
+      var pay = $('of_pay');
+      var ship = $('of_ship');
+      if (pay && (pay.value === 'aguardando_pagamento' || pay.value === 'pending')) pay.value = 'pago';
+      if (ship && (ship.value === 'pending' || !ship.value)) ship.value = 'preparacao';
+    }
+    if (estado === 'shipped') {
+      var sh = $('of_ship');
+      if (sh) sh.value = 'em_transito';
+    }
   }
 
   async function saveOrder(orderId) {
+    orderId = String(orderId || '').trim();
+    var saveBtn = $('btnSaveOrder');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = t().loading; }
     try {
-      var estado = $('of_estado') && $('of_estado').value;
       var res = await erpCall('updateOrderStatus', {
         orderId: orderId,
-        estado: estado,
-        estado_pagamento: $('of_pay') && $('of_pay').value,
-        estado_envio: $('of_ship') && $('of_ship').value,
-        tracking: $('of_track') && $('of_track').value,
-        transportadora: $('of_carrier') && $('of_carrier').value
+        estado: $('of_estado') ? $('of_estado').value : '',
+        estado_pagamento: $('of_pay') ? $('of_pay').value : '',
+        estado_envio: $('of_ship') ? $('of_ship').value : '',
+        tracking: $('of_track') ? $('of_track').value : '',
+        transportadora: $('of_carrier') ? $('of_carrier').value : 'CTT',
+        notes: $('of_notes') ? $('of_notes').value : ''
       });
       if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
-      if ($('of_track') && $('of_track').value) {
-        await erpCall('updateEntrega', {
-          pedido_id: orderId,
-          tracking_number: $('of_track').value,
-          transportadora: ($('of_carrier') && $('of_carrier').value) || 'CTT'
-        });
-      }
-      if ($('of_notes') && $('of_notes').value) {
-        await erpCall('updateOrder', { orderId: orderId, notes: $('of_notes').value });
-      }
       closeModal();
       toast(t().saved, 's');
       await loadOrders();
-      renderMain();
-    } catch (e) { toast(e.message, 'e'); }
+      renderOrdersPanel();
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
+    finally {
+      if (saveBtn) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = t().ord.updateStatus;
+      }
+    }
   }
 
   async function exportOrders() {
@@ -863,8 +1280,8 @@
     var ok = await validateAdmin();
     if (!ok) return;
     renderShell();
-    await loadCategories();
     loadViewData();
+    loadCategories().catch(function () { /* catégories en arrière-plan */ });
   }
 
   async function init() {
@@ -904,6 +1321,8 @@
     savePromoBanner: function () { if (proApi) proApi.savePromoBanner(); },
     setOrderSearch: setOrderSearch,
     setOrderFilter: setOrderFilter,
+    refreshOrders: refreshOrders,
+    setOrderQuick: setOrderQuick,
     setClientSearch: setClientSearch,
     editProduct: editProduct,
     saveProduct: saveProduct,
@@ -915,12 +1334,18 @@
     saveOrder: saveOrder,
     exportOrders: exportOrders,
     saveConfig: saveConfig,
+    setVitrineLang: setVitrineLang,
+    saveStorefront: saveStorefront,
+    uploadHeroBg: uploadHeroBg,
+    editAdminUser: editAdminUser,
+    saveAdminUser: saveAdminUser,
     editCoupon: editCoupon,
     saveCoupon: saveCoupon,
     removeCoupon: removeCoupon,
     syncDrive: function () {
       if (global.ProductWizard) global.ProductWizard.syncDrive();
-    }
+    },
+    logoError: logoError
   };
 
   if (global.AdminPro) {
@@ -933,6 +1358,7 @@
       loadProducts: loadProducts,
       loadCoupons: loadCoupons,
       loadConfig: loadConfig,
+      loadCategories: loadCategories,
       renderMain: renderMain,
       openModal: openModal,
       closeModal: closeModal,
