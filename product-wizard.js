@@ -60,8 +60,8 @@
   function w() { return t().wiz || {}; }
 
   function colorLabel(c) {
-    var lang = (deps.state && deps.state.lang) || 'fr';
-    return c[lang] || c.fr || c.id;
+    var lang = (deps.state && deps.state.lang) || 'pt';
+    return c[lang] || c.pt || c.fr || c.id;
   }
 
   function findColorById(id) {
