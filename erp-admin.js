@@ -230,6 +230,7 @@
       var b = $('btnLang' + c.toUpperCase());
       if (b) b.classList.toggle('on', c === l);
     });
+    if (state.token && $('sidebar')) refreshSidebarNav();
     render();
   }
 
@@ -365,6 +366,7 @@
     state.loading = false;
     if (opts.silent && state.view === 'orders') renderOrdersPanel();
     else renderMain();
+    updateNavActiveState();
   }
 
   function renderOrdersPanel() {
@@ -564,10 +566,48 @@
     return items;
   }
 
+  function viewTitle() {
+    return ({
+      dashboard: t().dash.title,
+      products: t().prod.title,
+      categories: t().cat.title,
+      orders: t().ord.title,
+      clients: t().cli.title,
+      vitrine: (t().vit && t().vit.title) || 'Vitrine',
+      team: (t().team && t().team.title) || 'Team',
+      config: t().cfg.title,
+      coupons: (t().promo && t().promo.title) || t().cup.title
+    })[state.view] || '';
+  }
+
+  function updateNavActiveState() {
+    document.querySelectorAll('.sidebar-nav .nav-item[data-view]').forEach(function (btn) {
+      var active = btn.getAttribute('data-view') === state.view;
+      btn.classList.toggle('on', active);
+      btn.setAttribute('aria-current', active ? 'page' : 'false');
+    });
+    var mob = $('mobBar');
+    if (mob) {
+      mob.querySelectorAll('button[data-view]').forEach(function (btn) {
+        var active = btn.getAttribute('data-view') === state.view;
+        btn.classList.toggle('on', active);
+        btn.setAttribute('aria-current', active ? 'page' : 'false');
+      });
+    }
+    var title = $('topTitle');
+    if (title) title.textContent = viewTitle();
+  }
+
+  function refreshSidebarNav() {
+    var nav = document.querySelector('.sidebar-nav');
+    if (nav) nav.innerHTML = renderNavHtml();
+  }
+
   function renderNavHtml() {
     return navItems().map(function (it) {
-      return '<button type="button" class="nav-item' + (state.view === it.id ? ' on' : '') + '" data-view="' + it.id + '" onclick="Admin.setView(\'' + it.id + '\');Admin.closeSidebar()">' +
-        '<span class="nav-ico">' + navIcon(it.id) + '</span><span>' + esc(it.label) + '</span></button>';
+      var active = state.view === it.id;
+      return '<button type="button" class="nav-item' + (active ? ' on' : '') + '" data-view="' + it.id + '" aria-current="' + (active ? 'page' : 'false') + '" onclick="Admin.setView(\'' + it.id + '\');Admin.closeSidebar()">' +
+        '<span class="nav-ico">' + navIcon(it.id) + '</span><span class="nav-lbl">' + esc(it.label) + '</span></button>';
     }).join('');
   }
 
@@ -622,9 +662,9 @@
       '<main class="main" id="mainContent"></main>' +
       '</div></div>' +
       '<nav class="mob-bar" id="mobBar">' +
-      '<button type="button" class="' + (state.view === 'dashboard' ? 'on' : '') + '" onclick="Admin.setView(\'dashboard\')"><span class="mob-ico">' + navIcon('dashboard') + '</span>' + esc(a.nav.dashboard) + '</button>' +
-      '<button type="button" class="' + (state.view === 'products' ? 'on' : '') + '" onclick="Admin.setView(\'products\')"><span class="mob-ico">' + navIcon('products') + '</span>' + esc(a.nav.products) + '</button>' +
-      '<button type="button" class="' + (state.view === 'orders' ? 'on' : '') + '" onclick="Admin.setView(\'orders\')"><span class="mob-ico">' + navIcon('orders') + '</span>' + esc(a.nav.orders) + '</button>' +
+      '<button type="button" data-view="dashboard" class="' + (state.view === 'dashboard' ? 'on' : '') + '" aria-current="' + (state.view === 'dashboard' ? 'page' : 'false') + '" onclick="Admin.setView(\'dashboard\')"><span class="mob-ico">' + navIcon('dashboard') + '</span>' + esc(a.nav.dashboard) + '</button>' +
+      '<button type="button" data-view="products" class="' + (state.view === 'products' ? 'on' : '') + '" aria-current="' + (state.view === 'products' ? 'page' : 'false') + '" onclick="Admin.setView(\'products\')"><span class="mob-ico">' + navIcon('products') + '</span>' + esc(a.nav.products) + '</button>' +
+      '<button type="button" data-view="orders" class="' + (state.view === 'orders' ? 'on' : '') + '" aria-current="' + (state.view === 'orders' ? 'page' : 'false') + '" onclick="Admin.setView(\'orders\')"><span class="mob-ico">' + navIcon('orders') + '</span>' + esc(a.nav.orders) + '</button>' +
       '<button type="button" onclick="Admin.toggleSidebar()"><span class="mob-ico">' + (global.IconUi && global.IconUi.nav ? global.IconUi.nav('menu') : '☰') + '</span>' + esc(a.nav.more) + '</button>' +
       '</nav>';
   }
@@ -633,10 +673,7 @@
     var main = $('mainContent');
     var title = $('topTitle');
     if (!main) return;
-    if (title) {
-      var titles = { dashboard: t().dash.title, products: t().prod.title, categories: t().cat.title, orders: t().ord.title, clients: t().cli.title, vitrine: (t().vit && t().vit.title) || 'Vitrine', team: (t().team && t().team.title) || 'Team', config: t().cfg.title, coupons: (t().promo && t().promo.title) || t().cup.title };
-      title.textContent = titles[state.view] || '';
-    }
+    if (title) title.textContent = viewTitle();
     if (state.loading) {
       main.innerHTML = '<p class="loading-msg">' + esc(t().loading) + '</p>';
       return;
@@ -1340,15 +1377,7 @@
     else {
       if (!$('sidebar')) renderShell();
       renderMain();
-      var mob = $('mobBar');
-      if (mob) {
-        mob.querySelectorAll('button').forEach(function (btn, i) {
-          if (i < 3) {
-            var views = ['dashboard', 'products', 'orders'];
-            btn.classList.toggle('on', state.view === views[i]);
-          }
-        });
-      }
+      updateNavActiveState();
     }
     if ($('apiBanner')) $('apiBanner').style.display = apiOk() ? 'none' : 'block';
   }
