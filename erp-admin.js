@@ -87,6 +87,65 @@
     });
   }
 
+  function resolveImageMimeType(file) {
+    var mt = String((file && file.type) || '').toLowerCase().trim();
+    if (mt === 'image/jpg' || mt === 'image/pjpeg') return 'image/jpeg';
+    if (mt && mt !== 'application/octet-stream') return mt;
+    var n = String((file && file.name) || '').toLowerCase();
+    if (/\.jpe?g$/.test(n)) return 'image/jpeg';
+    if (/\.png$/.test(n)) return 'image/png';
+    if (/\.webp$/.test(n)) return 'image/webp';
+    if (/\.gif$/.test(n)) return 'image/gif';
+    if (/\.bmp$/.test(n)) return 'image/bmp';
+    if (/\.tiff?$/.test(n)) return 'image/tiff';
+    if (/\.svg$/.test(n)) return 'image/svg+xml';
+    if (/\.heic$/.test(n)) return 'image/heic';
+    if (/\.heif$/.test(n)) return 'image/heif';
+    if (/\.avif$/.test(n)) return 'image/avif';
+    return 'image/jpeg';
+  }
+
+  function isAllowedHeroImage(file, mime) {
+    var n = String((file && file.name) || '').toLowerCase();
+    if (/\.(jpe?g|png|webp|gif|bmp|tiff?|svg|heic|heif|avif)$/i.test(n)) return true;
+    return /^image\/(jpeg|png|webp|gif|bmp|tiff|svg\+xml|heic|heif|avif|x-icon)/i.test(mime || '');
+  }
+
+  function isUnknownActionError(msg) {
+    return /desconhecida|unknown|inconnu|desconocida|inconnue/i.test(String(msg || ''));
+  }
+
+  async function uploadVitrineImageWithFallback(payload) {
+    var actions = ['uploadVitrineImage', 'uploadHeroBg', 'uploadStoreImage'];
+    var lastErr = '';
+    var res = null;
+    for (var i = 0; i < actions.length; i++) {
+      res = await erpCall(actions[i], payload);
+      if (res && res.success) return res;
+      lastErr = (res && res.error) || lastErr;
+      if (!isUnknownActionError(lastErr)) break;
+    }
+    if (!isUnknownActionError(lastErr)) return res || { success: false, error: lastErr };
+    var ext = (payload.mimeType || 'image/jpeg').split('/').pop().replace('svg+xml', 'svg');
+    var up = await erpCall('uploadProductImage', {
+      base64: payload.base64,
+      mimeType: payload.mimeType,
+      fileName: payload.fileName || ('hero_bg.' + ext),
+      categoria: '_Vitrine',
+      produto_id: 'hero_bg'
+    });
+    if (!up || !up.success) {
+      return {
+        success: false,
+        error: (up && up.error) || lastErr || 'Upload impossible. Redéployez le script Google Apps Script (api_apps_script.gs).'
+      };
+    }
+    try {
+      await erpCall('updateConfig', { vitrine_hero_bg_url: up.url });
+    } catch (cfgErr) { /* URL Drive suffit si CONFIG échoue */ }
+    return { success: true, url: up.url, fileId: up.fileId, thumbnailUrl: up.thumbnailUrl, fallback: true };
+  }
+
   function getTheme() {
     return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
   }
@@ -768,7 +827,7 @@
       field('vit_logo_url', v.logoUrl, sf.logoUrl || '') +
       '<div class="field"><label>' + esc(v.heroBg) + '</label>' +
       (heroUrl ? '<div class="hero-preview"><img id="vitHeroPreview" src="' + esc(heroUrl) + '" alt=""/></div>' : '<div class="hero-preview empty" id="vitHeroPreviewWrap"><span>' + esc(v.heroUpload) + '</span></div>') +
-      '<input type="file" accept="image/*" id="vit_hero_file" onchange="Admin.uploadHeroBg(this)"/>' +
+      '<input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,image/svg+xml,image/heic,image/heif,image/avif,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff,.svg,.heic,.heif,.avif" id="vit_hero_file" onchange="Admin.uploadHeroBg(this)"/>' +
       field('vit_hero_bg_url', v.heroUrl, heroUrl) +
       '</div>' +
       '<div class="fgrid">' +
@@ -824,13 +883,31 @@
     var v = t().vit || {};
     var file = input && input.files && input.files[0];
     if (!file) return;
-    if (file.size > 8 * 1024 * 1024) { toast(v.imgSizeError || 'Image too large', 'e'); return; }
+    var mime = resolveImageMimeType(file);
+    if (!isAllowedHeroImage(file, mime)) {
+      toast(v.imgTypeError || 'Format d\'image non supporté (JPEG, PNG, WebP, GIF, BMP, TIFF, SVG, HEIC, AVIF)', 'e');
+      if (input) input.value = '';
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) { toast(v.imgSizeError || 'Image trop volumineuse (max 8 Mo)', 'e'); return; }
     try {
       toast(v.uploading || t().loading, 'i');
       var dataUrl = await fileToBase64(file);
       var b64 = String(dataUrl).split(',')[1] || dataUrl;
-      var res = await erpCall('uploadVitrineImage', { base64: b64, mimeType: file.type || 'image/jpeg', purpose: 'hero_bg' });
-      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
+      var res = await uploadVitrineImageWithFallback({
+        base64: b64,
+        mimeType: mime,
+        fileName: file.name,
+        purpose: 'hero_bg'
+      });
+      if (!res || !res.success) {
+        var err = (res && res.error) || t().error;
+        if (isUnknownActionError(err)) {
+          err = v.apiDeployHint || 'Redéployez api_apps_script.gs dans Google Apps Script (Déployer → Application Web → nouvelle version).';
+        }
+        toast(err, 'e');
+        return;
+      }
       if (!state.storefront) state.storefront = {};
       state.storefront.heroBgUrl = res.url;
       var urlEl = $('vit_hero_bg_url');
