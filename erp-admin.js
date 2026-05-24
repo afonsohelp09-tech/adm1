@@ -9,6 +9,7 @@
   var LS_TOKEN = 'azav_admin_token';
   var LS_USER = 'azav_admin_user';
   var LS_LANG = 'azav_admin_lang';
+  var LS_THEME = 'azav_admin_theme';
 
   var state = {
     lang: 'fr',
@@ -68,13 +69,67 @@
     if (global.toast) global.toast(msg, type || 's');
   }
 
+  function getTheme() {
+    return document.documentElement.getAttribute('data-theme') === 'light' ? 'light' : 'dark';
+  }
+
+  function applyTheme(theme) {
+    theme = theme === 'light' ? 'light' : 'dark';
+    state.theme = theme;
+    document.documentElement.setAttribute('data-theme', theme);
+    try { localStorage.setItem(LS_THEME, theme); } catch (e) { /* ignore */ }
+    var meta = $('metaThemeColor') || document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.setAttribute('content', theme === 'light' ? '#f5f3ef' : '#0b0a09');
+    updateThemeButtons();
+  }
+
+  function themeSwitchHtml() {
+    var a = t();
+    var th = getTheme();
+    return '<div class="theme-switch" role="group" aria-label="' + esc(a.themeAria || 'Appearance') + '">' +
+      '<button type="button" id="btnThemeDark" class="' + (th === 'dark' ? 'on' : '') + '" aria-pressed="' + (th === 'dark' ? 'true' : 'false') + '" onclick="Admin.setTheme(\'dark\')" title="' + esc(a.themeDark) + '">' +
+      '<svg aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>' +
+      '<span class="theme-lbl">' + esc(a.themeDarkShort) + '</span></button>' +
+      '<button type="button" id="btnThemeLight" class="' + (th === 'light' ? 'on' : '') + '" aria-pressed="' + (th === 'light' ? 'true' : 'false') + '" onclick="Admin.setTheme(\'light\')" title="' + esc(a.themeLight) + '">' +
+      '<svg aria-hidden="true" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z"/></svg>' +
+      '<span class="theme-lbl">' + esc(a.themeLightShort) + '</span></button></div>';
+  }
+
+  function updateThemeButtons() {
+    var th = getTheme();
+    var a = t();
+    var darkBtn = $('btnThemeDark');
+    var lightBtn = $('btnThemeLight');
+    if (darkBtn) {
+      darkBtn.classList.toggle('on', th === 'dark');
+      darkBtn.setAttribute('aria-pressed', th === 'dark' ? 'true' : 'false');
+      darkBtn.title = a.themeDark || 'Dark';
+      var dl = darkBtn.querySelector('.theme-lbl');
+      if (dl) dl.textContent = a.themeDarkShort || a.themeDark || 'Dark';
+    }
+    if (lightBtn) {
+      lightBtn.classList.toggle('on', th === 'light');
+      lightBtn.setAttribute('aria-pressed', th === 'light' ? 'true' : 'false');
+      lightBtn.title = a.themeLight || 'Light';
+      var ll = lightBtn.querySelector('.theme-lbl');
+      if (ll) ll.textContent = a.themeLightShort || a.themeLight || 'Light';
+    }
+  }
+
+  function setTheme(theme) {
+    applyTheme(theme);
+  }
+
   function loadSession() {
     try {
       state.token = localStorage.getItem(LS_TOKEN) || '';
       state.user = JSON.parse(localStorage.getItem(LS_USER) || 'null');
       var lg = localStorage.getItem(LS_LANG);
       if (lg && global.AdminT[lg]) state.lang = lg;
+      var th = localStorage.getItem(LS_THEME);
+      if (th === 'light' || th === 'dark') state.theme = th;
     } catch (e) { state.user = null; }
+    applyTheme(state.theme);
   }
 
   function saveSession() {
@@ -293,10 +348,13 @@
       '<div class="field"><label>' + esc(a.password) + '</label><input id="loginPass" type="password" autocomplete="current-password"/></div>' +
       '<button type="button" class="btn-primary" onclick="Admin.login()">' + esc(a.loginBtn) + '</button>' +
       '<div class="lang-row">' +
+      '<div class="lang-switch" role="group">' +
       ['fr', 'pt', 'en', 'es'].map(function (c) {
-        return '<button type="button" id="btnLang' + c.toUpperCase() + '" class="lang-pill' + (state.lang === c ? ' on' : '') + '" onclick="Admin.setLang(\'' + c + '\')">' + c.toUpperCase() + '</button>';
+        return '<button type="button" id="btnLang' + c.toUpperCase() + '" class="' + (state.lang === c ? 'on' : '') + '" onclick="Admin.setLang(\'' + c + '\')">' + c.toUpperCase() + '</button>';
       }).join('') +
-      '</div></div></div>';
+      '</div></div>' +
+      '<div class="login-theme-row">' + themeSwitchHtml() + '</div>' +
+      '</div></div>';
   }
 
   function renderShell() {
@@ -315,7 +373,8 @@
       '<button type="button" class="icon-btn menu-btn" onclick="Admin.toggleSidebar()" aria-label="Menu"><svg fill="none" viewBox="0 0 24 24" stroke="currentColor"><path stroke-linecap="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg></button>' +
       '<h1 class="top-title" id="topTitle"></h1>' +
       '<div class="top-right"><span class="user-pill">' + userLabel + '</span>' +
-      '<div class="lang-box">' +
+      themeSwitchHtml() +
+      '<div class="lang-switch" role="group">' +
       ['fr', 'pt', 'en', 'es'].map(function (c) {
         return '<button type="button" id="btnLang' + c.toUpperCase() + '" class="' + (state.lang === c ? 'on' : '') + '" onclick="Admin.setLang(\'' + c + '\')">' + c.toUpperCase() + '</button>';
       }).join('') +
@@ -821,6 +880,8 @@
   global.Admin = {
     init: init,
     setLang: setLang,
+    setTheme: setTheme,
+    getTheme: getTheme,
     login: login,
     logout: logout,
     setView: setView,
