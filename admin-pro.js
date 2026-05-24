@@ -38,7 +38,8 @@
     try {
       var dt = new Date(v);
       if (isNaN(dt.getTime())) return String(v);
-      return dt.toLocaleString(d.state.lang === 'pt' ? 'pt-PT' : d.state.lang === 'en' ? 'en-GB' : d.state.lang === 'es' ? 'es-ES' : 'fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+      var loc = { fr: 'fr-FR', pt: 'pt-PT', en: 'en-GB', es: 'es-ES' };
+      return dt.toLocaleString(loc[d.state.lang] || 'pt-PT', { dateStyle: 'short', timeStyle: 'short' });
     } catch (e) { return String(v); }
   }
 
@@ -150,12 +151,13 @@
       '</div>' +
       '<button type="button" class="btn-primary" onclick="Admin.editCoupon(null)">' + esc(c.new) + '</button></div>' +
       '<div class="table-wrap"><table class="data-table"><thead><tr>' +
-      '<th>' + esc(c.code) + '</th><th>' + esc(c.type) + '</th><th>' + esc(c.value) + '</th><th>' + esc(c.startDate) + '</th><th>' + esc(c.endDate) + '</th><th>' + esc(c.usage) + '</th><th>' + esc(c.status) + '</th><th></th></tr></thead><tbody>' +
+      '<th>' + esc(c.code) + '</th><th>' + esc(c.type) + '</th><th>' + esc(c.value) + '</th><th>' + esc(c.minOrder) + '</th><th>' + esc(c.startDate) + '</th><th>' + esc(c.endDate) + '</th><th>' + esc(c.usage) + '</th><th>' + esc(c.status) + '</th><th></th></tr></thead><tbody>' +
       (rows.length ? rows.map(function (cup) {
         var id = esc(cup.cupon_id || cup.cupom_id || cup.codigo).replace(/'/g, "\\'");
         var tipoLbl = cup.tipo === 'percent' ? c.percent : cup.tipo === 'fixed' ? c.fixed : c.freeShip;
         var uso = esc(cup.uso_atual || 0) + (cup.uso_max ? ' / ' + esc(cup.uso_max) : '');
-        return '<tr><td><strong>' + esc(cup.codigo) + '</strong></td><td>' + esc(tipoLbl) + '</td><td>' + esc(cup.valor) + '</td>' +
+        var minO = cup.pedido_minimo ? esc(cup.pedido_minimo) + ' €' : '—';
+        return '<tr><td><strong>' + esc(cup.codigo) + '</strong></td><td>' + esc(tipoLbl) + '</td><td>' + esc(cup.valor) + '</td><td>' + minO + '</td>' +
           '<td>' + esc(formatDate(cup.data_inicio)) + '</td><td>' + esc(formatDate(cup.data_fim) || '—') + '</td><td>' + uso + '</td>' +
           '<td><span class="badge ' + (String(cup.status).toLowerCase() === 'ativo' ? 'badge-pub' : 'badge-draft') + '">' + esc(cup.status || 'ativo') + '</span></td>' +
           '<td class="actions">' +
@@ -164,28 +166,47 @@
               '<button type="button" class="btn-sm danger" onclick="Admin.removeCoupon(\'' + id + '\')">' + esc(t().delete) + '</button>'
             : '') +
           '</td></tr>';
-      }).join('') : '<tr><td colspan="8" class="muted">' + esc(t().noData) + '</td></tr>') +
+      }).join('') : '<tr><td colspan="9" class="muted">' + esc(t().noData) + '</td></tr>') +
       '</tbody></table></div>';
+  }
+
+  function cupValueHint(tipo) {
+    var c = t().cup;
+    if (tipo === 'fixed') return c.valueHintFixed || '';
+    if (tipo === 'free_shipping') return c.valueHintShip || '';
+    return c.valueHintPercent || '';
   }
 
   function couponModalHtml(cup) {
     var c = t().cup;
     var isEdit = !!cup;
     var tipo = cup ? cup.tipo : 'percent';
-    return '<div class="modal-inner"><h2>' + esc(isEdit ? c.edit : c.new) + '</h2>' +
-      '<div class="field"><label>' + esc(c.code) + ' *</label><input id="cup_code" value="' + esc(cup ? cup.codigo : '') + '"' + (isEdit ? ' readonly' : '') + '/></div>' +
-      '<div class="field"><label>' + esc(c.type) + '</label><select id="cup_type">' +
+    var cats = (d.state.categories || []).map(function (cat) {
+      var n = cat.nome || '';
+      var sel = cup && String(cup.categoria || '') === n ? ' selected' : '';
+      return '<option value="' + esc(n) + '"' + sel + '>' + esc(n) + '</option>';
+    }).join('');
+    return '<div class="modal-inner modal-coupon"><h2>' + esc(isEdit ? c.edit : c.new) + '</h2>' +
+      '<p class="hint-block">' + esc(c.formComplete || '') + '</p>' +
+      '<section class="panel" style="margin-bottom:12px"><h2 style="font-size:11px;margin-bottom:10px">' + esc(c.code) + '</h2>' +
+      '<div class="field"><label>' + esc(c.code) + ' *</label><input id="cup_code" value="' + esc(cup ? cup.codigo : '') + '"' + (isEdit ? ' readonly' : '') + ' placeholder="PROMO2026"/></div>' +
+      '<div class="field"><label>' + esc(c.desc) + '</label><input id="cup_desc" value="' + esc(cup ? (cup.descricao || '') : '') + '"/></div>' +
+      '<div class="field"><label>' + esc(c.status) + '</label><select id="cup_status">' +
+      '<option value="ativo"' + (!cup || String(cup.status).toLowerCase() !== 'inativo' ? ' selected' : '') + '>' + esc(c.active) + '</option>' +
+      '<option value="inativo"' + (cup && String(cup.status).toLowerCase() === 'inativo' ? ' selected' : '') + '>' + esc(c.inactive) + '</option></select></div></section>' +
+      '<section class="panel" style="margin-bottom:12px"><h2 style="font-size:11px;margin-bottom:10px">' + esc(c.type) + ' & ' + esc(c.value) + '</h2>' +
+      '<div class="field"><label>' + esc(c.type) + '</label><select id="cup_type" onchange="var h=document.getElementById(\'cup_val_hint\');if(h){var t=this.value;h.textContent=t===\'fixed\'' + "?'"+ esc(c.valueHintFixed || '').replace(/'/g, "\\'") + "':t==='free_shipping'?'"+ esc(c.valueHintShip || '').replace(/'/g, "\\'") + "':'"+ esc(c.valueHintPercent || '').replace(/'/g, "\\'") + "';}\">" +
       '<option value="percent"' + (tipo === 'percent' ? ' selected' : '') + '>' + esc(c.percent) + '</option>' +
       '<option value="fixed"' + (tipo === 'fixed' ? ' selected' : '') + '>' + esc(c.fixed) + '</option>' +
       '<option value="free_shipping"' + (tipo === 'free_shipping' ? ' selected' : '') + '>' + esc(c.freeShip) + '</option></select></div>' +
-      '<div class="field"><label>' + esc(c.value) + '</label><input id="cup_val" type="number" step="0.01" value="' + esc(cup ? cup.valor : '') + '"/></div>' +
+      '<div class="field"><label>' + esc(c.value) + '</label><input id="cup_val" type="number" step="0.01" min="0" value="' + esc(cup ? cup.valor : '') + '"/>' +
+      '<span class="hint-block" id="cup_val_hint" style="margin-top:4px">' + esc(cupValueHint(tipo)) + '</span></div>' +
+      '<div class="fgrid"><div class="field"><label>' + esc(c.minOrder) + '</label><input id="cup_min" type="number" step="0.01" min="0" value="' + esc(cup && cup.pedido_minimo ? cup.pedido_minimo : '') + '" placeholder="0"/></div>' +
+      '<div class="field"><label>' + esc(c.maxUsage) + '</label><input id="cup_max" type="number" min="0" value="' + esc(cup ? (cup.uso_max || 0) : '0') + '"/><span class="hint-block">' + (isEdit ? esc(c.currentUsage) + ': ' + esc(cup.uso_atual || 0) : '') + '</span></div></div></section>' +
+      '<section class="panel" style="margin-bottom:12px"><h2 style="font-size:11px;margin-bottom:10px">' + esc(c.startDate) + '</h2>' +
       '<div class="fgrid"><div class="field"><label>' + esc(c.startDate) + '</label><input id="cup_start" type="date" value="' + esc(cup && cup.data_inicio ? String(cup.data_inicio).slice(0, 10) : '') + '"/></div>' +
       '<div class="field"><label>' + esc(c.endDate) + '</label><input id="cup_end" type="date" value="' + esc(cup && cup.data_fim ? String(cup.data_fim).slice(0, 10) : '') + '"/></div></div>' +
-      '<div class="field"><label>' + esc(c.maxUsage) + '</label><input id="cup_max" type="number" value="' + esc(cup ? (cup.uso_max || 0) : '0') + '"/></div>' +
-      '<div class="field"><label>' + esc(c.desc) + '</label><input id="cup_desc" value="' + esc(cup ? (cup.descricao || '') : '') + '"/></div>' +
-      (isEdit ? '<div class="field"><label>' + esc(c.status) + '</label><select id="cup_status">' +
-        '<option value="ativo"' + (String(cup.status).toLowerCase() === 'ativo' ? ' selected' : '') + '>' + esc(c.active) + '</option>' +
-        '<option value="inativo"' + (String(cup.status).toLowerCase() === 'inativo' ? ' selected' : '') + '>' + esc(c.inactive) + '</option></select></div>' : '') +
+      '<div class="field"><label>' + esc(c.category) + '</label><select id="cup_cat"><option value="">' + esc(c.categoryHint || '—') + '</option>' + cats + '</select></div></section>' +
       '<div class="modal-actions"><button type="button" class="btn-ghost" onclick="Admin.closeModal()">' + esc(t().cancel) + '</button>' +
       '<button type="button" class="btn-primary" onclick="Admin.saveCoupon(\'' + esc(isEdit ? (cup.cupon_id || cup.cupom_id || '') : '').replace(/'/g, "\\'") + '\')">' + esc(t().save) + '</button></div></div>';
   }
@@ -317,7 +338,10 @@
         return String(x.cupon_id || x.cupom_id || '') === id || String(x.codigo || '').toUpperCase() === String(id).toUpperCase();
       });
     }
-    d.openModal(couponModalHtml(cup));
+    var open = function () { d.openModal(couponModalHtml(cup), { wide: true }); };
+    if (!d.state.categories || !d.state.categories.length) {
+      (d.loadCategories ? d.loadCategories() : Promise.resolve()).then(open);
+    } else open();
   }
 
   async function saveCoupon(id) {
@@ -330,13 +354,15 @@
       data_inicio: ($('cup_start') && $('cup_start').value) || '',
       data_fim: ($('cup_end') && $('cup_end').value) || '',
       uso_max: parseInt($('cup_max') && $('cup_max').value, 10) || 0,
-      descricao: ($('cup_desc') && $('cup_desc').value) || ''
+      descricao: ($('cup_desc') && $('cup_desc').value) || '',
+      pedido_minimo: ($('cup_min') && $('cup_min').value) ? parseFloat($('cup_min').value) : '',
+      categoria: ($('cup_cat') && $('cup_cat').value) || '',
+      status: ($('cup_status') && $('cup_status').value) || 'ativo'
     };
     try {
       var res;
       if (id) {
         payload.cupon_id = id;
-        if ($('cup_status')) payload.status = $('cup_status').value;
         res = await d.erpCall('updateCoupon', payload);
       } else {
         res = await d.erpCall('createCoupon', payload);
