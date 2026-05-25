@@ -45,6 +45,10 @@
     vitrineEditLang: 'pt',
     adminUsers: []
   };
+  var storefrontAutosaveTimer = 0;
+  var storefrontAutosaveDirty = false;
+  var storefrontAutosaveInFlight = false;
+  var storefrontAutosaveQueued = false;
 
   var VITRINE_TEXT_EXAMPLES = {
     fr: {
@@ -770,6 +774,7 @@
     else if (state.view === 'team') main.innerHTML = renderTeam();
     else if (state.view === 'config') main.innerHTML = renderConfig();
     else if (state.view === 'coupons') main.innerHTML = proApi ? proApi.renderPromotions() : renderCoupons();
+    if (state.view === 'vitrine') bindStorefrontAutosave();
   }
 
   function renderDashboard() {
@@ -1044,6 +1049,7 @@
         help: vitrineExampleHelp(vitrineExampleSet(state.vitrineEditLang || 'pt').promoText)
       }) +
       '</section>' +
+      '<p class="field-help">' + esc(v.autoSaveHint || 'Les modifications sont enregistrées automatiquement après un court instant et au rafraîchissement de la page.') + '</p>' +
       '<button type="submit" class="btn-primary wide">' + esc(t().save) + '</button></form>';
   }
 
@@ -1067,6 +1073,38 @@
     collectVitrineLangFields();
     state.vitrineEditLang = lg;
     renderMain();
+  }
+
+  function markStorefrontDirty() {
+    storefrontAutosaveDirty = true;
+  }
+
+  function scheduleStorefrontAutosave(immediate) {
+    if (state.view !== 'vitrine') return;
+    markStorefrontDirty();
+    if (storefrontAutosaveTimer) clearTimeout(storefrontAutosaveTimer);
+    storefrontAutosaveTimer = setTimeout(function () {
+      storefrontAutosaveTimer = 0;
+      saveStorefront({ silent: true });
+    }, immediate ? 120 : 900);
+  }
+
+  function bindStorefrontAutosave() {
+    var main = $('mainContent');
+    if (!main) return;
+    var form = main.querySelector('.config-form');
+    if (!form || form.dataset.autosaveBound === '1') return;
+    form.dataset.autosaveBound = '1';
+    form.addEventListener('input', function (ev) {
+      var el = ev.target;
+      if (!el || el.type === 'file') return;
+      if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') scheduleStorefrontAutosave(false);
+    });
+    form.addEventListener('change', function (ev) {
+      var el = ev.target;
+      if (!el || el.type === 'file') return;
+      scheduleStorefrontAutosave(true);
+    });
   }
 
   async function uploadHeroBg(input) {
@@ -1174,6 +1212,28 @@
     return state.storefront;
   }
 
+  function postKeepalive(action, data) {
+    if (!apiOk()) return;
+    try {
+      fetch(API, {
+        method: 'POST',
+        mode: 'cors',
+        keepalive: true,
+        headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+        body: JSON.stringify({ action: action, data: data || {}, token: state.token || '' })
+      });
+    } catch (e) { /* ignore */ }
+  }
+
+  function flushStorefrontAutosave() {
+    if (!storefrontAutosaveDirty || state.view !== 'vitrine') return;
+    collectVitrineLangFields();
+    var sf = syncStorefrontDraft();
+    postKeepalive('updateConfig', buildStorefrontConfigPatch(sf));
+    if (sf.storeName) postKeepalive('updateEmpresa', { nome: sf.storeName });
+    storefrontAutosaveDirty = false;
+  }
+
   function buildStorefrontConfigPatch(sf) {
     var patch = {
       site_name: sf.storeName || '',
@@ -1241,16 +1301,36 @@
     return { success: true, fallback: true };
   }
 
-  async function saveStorefront() {
+  async function saveStorefront(opts) {
+    opts = opts || {};
     collectVitrineLangFields();
     var sf = syncStorefrontDraft();
+    if (storefrontAutosaveInFlight) {
+      storefrontAutosaveQueued = true;
+      return;
+    }
+    storefrontAutosaveInFlight = true;
     try {
       var res = await saveStorefrontWithFallback(sf);
-      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
-      toast(t().saved, 's');
-      await loadStorefront();
-      renderMain();
-    } catch (e) { toast(apiErrMsg(e), 'e'); }
+      if (!res || !res.success) {
+        if (!opts.silent) toast((res && res.error) || t().error, 'e');
+        return;
+      }
+      storefrontAutosaveDirty = false;
+      if (!opts.silent) {
+        toast(t().saved, 's');
+        await loadStorefront();
+        renderMain();
+      }
+    } catch (e) {
+      if (!opts.silent) toast(apiErrMsg(e), 'e');
+    } finally {
+      storefrontAutosaveInFlight = false;
+      if (storefrontAutosaveQueued) {
+        storefrontAutosaveQueued = false;
+        scheduleStorefrontAutosave(true);
+      }
+    }
   }
 
   function renderTeam() {
@@ -1664,6 +1744,7 @@
 
   async function init() {
     loadSession();
+    global.addEventListener('pagehide', flushStorefrontAutosave);
     if ($('apiBanner')) {
       $('apiBanner').innerHTML = t().apiBanner;
       $('apiBanner').style.display = apiOk() ? 'none' : 'block';
