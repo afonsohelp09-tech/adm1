@@ -425,7 +425,12 @@
     }
     try {
       if (state.view === 'dashboard') await loadDashboard();
-      else if (state.view === 'products') await loadProducts();
+      else if (state.view === 'products') {
+        await Promise.all([
+          loadProducts(),
+          state.categories.length ? Promise.resolve() : loadCategories()
+        ]);
+      }
       else if (state.view === 'categories') await loadCategories();
       else if (state.view === 'orders') await loadOrders();
       else if (state.view === 'clients') await loadClients();
@@ -433,9 +438,10 @@
       else if (state.view === 'vitrine') await loadStorefront();
       else if (state.view === 'team') await loadAdminUsers();
       else if (state.view === 'coupons') {
-        await loadCoupons();
-        if (!state.categories.length) await loadCategories();
-        if (state.promoTab === 'banner') await loadConfig();
+        var tasks = [loadCoupons()];
+        if (!state.categories.length) tasks.push(loadCategories());
+        if (state.promoTab === 'banner') tasks.push(loadConfig());
+        await Promise.all(tasks);
       }
     } catch (e) {
       toast(apiErrMsg(e), 'e');
@@ -1168,25 +1174,78 @@
     return state.storefront;
   }
 
+  function buildStorefrontConfigPatch(sf) {
+    var patch = {
+      site_name: sf.storeName || '',
+      store_logo_url: sf.logoUrl || '',
+      color_main: (sf.colors && sf.colors.main) || '#1A1A1A',
+      color_accent: (sf.colors && sf.colors.accent) || '#C9A96E',
+      vitrine_hero_bg_url: sf.heroBgUrl || '',
+      boutique_default_lang: sf.defaultLang || 'pt',
+      social_instagram: (sf.social && sf.social.instagram) || '',
+      social_facebook: (sf.social && sf.social.facebook) || '',
+      social_pinterest: (sf.social && sf.social.pinterest) || '',
+      social_tiktok: (sf.social && sf.social.tiktok) || '',
+      promo_banner_enabled: sf.promoOn || '0',
+      promo_banner_text: sf.promoText || ''
+    };
+    ['pt', 'fr', 'en', 'es'].forEach(function (lg) {
+      var block = (sf.content && sf.content[lg]) || {};
+      patch['vitrine_hero_eyebrow_' + lg] = block.hEye || '';
+      patch['vitrine_hero_title_' + lg] = block.hTitle || '';
+      patch['vitrine_hero_sub_' + lg] = block.hSub || '';
+      patch['vitrine_hero_btn1_' + lg] = block.hBtn1 || '';
+      patch['vitrine_hero_btn2_' + lg] = block.hBtn2 || '';
+      patch['vitrine_shop_label_' + lg] = block.shopLabel || '';
+      patch['vitrine_shop_title_' + lg] = block.shopTitle || '';
+      patch['vitrine_footer_desc_' + lg] = block.fDesc || '';
+    });
+    return patch;
+  }
+
+  async function saveStorefrontWithFallback(sf) {
+    var payload = {
+      storeName: sf.storeName,
+      logoUrl: sf.logoUrl,
+      heroBgUrl: sf.heroBgUrl,
+      color_main: sf.colors.main,
+      color_accent: sf.colors.accent,
+      defaultLang: sf.defaultLang,
+      social_instagram: sf.social.instagram,
+      social_facebook: sf.social.facebook,
+      social_pinterest: sf.social.pinterest,
+      social_tiktok: sf.social.tiktok,
+      promo_banner_enabled: sf.promoOn,
+      promo_banner_text: sf.promoText,
+      content: sf.content
+    };
+    var res = await erpCall('updateStorefront', payload);
+    if (res && res.success) return res;
+    var err = (res && res.error) || '';
+    if (!isUnknownActionError(err)) return res;
+
+    var legacyRes = await erpCall('updateStoreDesign', payload);
+    if (legacyRes && legacyRes.success) return legacyRes;
+    err = (legacyRes && legacyRes.error) || err;
+    if (!isUnknownActionError(err)) return legacyRes;
+
+    var patch = buildStorefrontConfigPatch(sf);
+    var cfgRes = await erpCall('updateConfig', patch);
+    if (!cfgRes || !cfgRes.success) return cfgRes || { success: false, error: err || t().error };
+
+    try {
+      await erpCall('updateEmpresa', { nome: sf.storeName || '' });
+    } catch (empresaErr) {
+      /* Le nom restera disponible via site_name dans CONFIG. */
+    }
+    return { success: true, fallback: true };
+  }
+
   async function saveStorefront() {
     collectVitrineLangFields();
     var sf = syncStorefrontDraft();
     try {
-      var res = await erpCall('updateStorefront', {
-        storeName: sf.storeName,
-        logoUrl: sf.logoUrl,
-        heroBgUrl: sf.heroBgUrl,
-        color_main: sf.colors.main,
-        color_accent: sf.colors.accent,
-        defaultLang: sf.defaultLang,
-        social_instagram: sf.social.instagram,
-        social_facebook: sf.social.facebook,
-        social_pinterest: sf.social.pinterest,
-        social_tiktok: sf.social.tiktok,
-        promo_banner_enabled: sf.promoOn,
-        promo_banner_text: sf.promoText,
-        content: sf.content
-      });
+      var res = await saveStorefrontWithFallback(sf);
       if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
       toast(t().saved, 's');
       await loadStorefront();
