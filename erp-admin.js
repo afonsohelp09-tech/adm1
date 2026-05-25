@@ -46,6 +46,53 @@
     adminUsers: []
   };
 
+  var VITRINE_TEXT_EXAMPLES = {
+    fr: {
+      hEye: 'HAUTE COUTURE · COLLECTION SIGNATURE 2026',
+      hTitle: "L'Allure Française<br><em>Redéfinie</em>",
+      hSub: "Matières d'exception certifiées, coupes géométriques intemporelles et fabrication responsable.",
+      hBtn1: 'Découvrir la boutique ↓',
+      hBtn2: 'Les nouveautés',
+      shopLabel: 'Notre sélection',
+      shopTitle: 'Collections exclusives',
+      fDesc: 'Notre maison réinterprète les grands basiques du vestiaire parisien avec transparence et responsabilité.',
+      promoText: '✦ LIVRAISON OFFERTE DÈS 150 € · RETOURS 30 JOURS GRATUITS · CODE : BIENVENUE10 (-10 %) ✦'
+    },
+    pt: {
+      hEye: 'ALTA COSTURA · COLEÇÃO SIGNATURE 2026',
+      hTitle: 'A Elegância<br><em>Redefinida</em>',
+      hSub: 'Materiais excecionais certificados, cortes intemporais e confeção responsável.',
+      hBtn1: 'Descobrir a loja ↓',
+      hBtn2: 'Novidades',
+      shopLabel: 'A nossa seleção',
+      shopTitle: 'Coleções exclusivas',
+      fDesc: 'Reinterpretamos o guarda-roupa essencial com transparência e respeito pelas matérias nobres.',
+      promoText: '✦ ENVIO GRÁTIS A PARTIR DE 150 € · DEVOLUÇÕES 30 DIAS GRÁTIS · CÓDIGO: BIENVENUE10 (-10 %) ✦'
+    },
+    en: {
+      hEye: 'HAUTE COUTURE · SIGNATURE COLLECTION 2026',
+      hTitle: 'French Allure<br><em>Redefined</em>',
+      hSub: 'Certified exceptional materials, timeless cuts and responsible craftsmanship.',
+      hBtn1: 'Explore the shop ↓',
+      hBtn2: 'New arrivals',
+      shopLabel: 'Our selection',
+      shopTitle: 'Exclusive collections',
+      fDesc: 'We reinterpret Parisian wardrobe essentials with transparency and care for noble materials.',
+      promoText: '✦ FREE SHIPPING FROM €150 · FREE 30-DAY RETURNS · CODE: BIENVENUE10 (-10 %) ✦'
+    },
+    es: {
+      hEye: 'ALTA COSTURA · COLECCIÓN SIGNATURE 2026',
+      hTitle: 'Elegancia<br><em>Redefinida</em>',
+      hSub: 'Materiales excepcionales certificados, cortes atemporales y confección responsable.',
+      hBtn1: 'Descubrir la tienda ↓',
+      hBtn2: 'Novedades',
+      shopLabel: 'Nuestra selección',
+      shopTitle: 'Colecciones exclusivas',
+      fDesc: 'Reinterpretamos los básicos del armario parisino con transparencia y respeto por las materias nobles.',
+      promoText: '✦ ENVÍO GRATIS DESDE 150 € · DEVOLUCIONES 30 DÍAS GRATIS · CÓDIGO: BIENVENUE10 (-10 %) ✦'
+    }
+  };
+
   function $(id) { return document.getElementById(id); }
   function t() { return (global.AdminT && global.AdminT[state.lang]) || global.AdminT.pt; }
 
@@ -92,6 +139,7 @@
     if (mt === 'image/jpg' || mt === 'image/pjpeg') return 'image/jpeg';
     if (mt && mt !== 'application/octet-stream') return mt;
     var n = String((file && file.name) || '').toLowerCase();
+    if (/\.jfif$/.test(n)) return 'image/jpeg';
     if (/\.jpe?g$/.test(n)) return 'image/jpeg';
     if (/\.png$/.test(n)) return 'image/png';
     if (/\.webp$/.test(n)) return 'image/webp';
@@ -102,12 +150,13 @@
     if (/\.heic$/.test(n)) return 'image/heic';
     if (/\.heif$/.test(n)) return 'image/heif';
     if (/\.avif$/.test(n)) return 'image/avif';
+    if (/\.ico$/.test(n)) return 'image/x-icon';
     return 'image/jpeg';
   }
 
   function isAllowedHeroImage(file, mime) {
     var n = String((file && file.name) || '').toLowerCase();
-    if (/\.(jpe?g|png|webp|gif|bmp|tiff?|svg|heic|heif|avif)$/i.test(n)) return true;
+    if (/\.(jpe?g|jfif|png|webp|gif|bmp|tiff?|svg|heic|heif|avif|ico)$/i.test(n)) return true;
     return /^image\/(jpeg|png|webp|gif|bmp|tiff|svg\+xml|heic|heif|avif|x-icon)/i.test(mime || '');
   }
 
@@ -115,10 +164,34 @@
     return /desconhecida|unknown|inconnu|desconocida|inconnue/i.test(String(msg || ''));
   }
 
+  function storefrontConfigKeyForPurpose(purpose) {
+    purpose = String(purpose || 'hero_bg').toLowerCase();
+    if (purpose === 'logo') return 'store_logo_url';
+    if (purpose === 'hero_bg') return 'vitrine_hero_bg_url';
+    return '';
+  }
+
+  function isHexColorValue(value) {
+    return /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(value || '').trim());
+  }
+
+  function normalizeHexColor(value, fallback) {
+    var raw = String(value || '').trim();
+    if (!raw) return String(fallback || '#1A1A1A').toUpperCase();
+    if (raw.charAt(0) !== '#') raw = '#' + raw;
+    if (!isHexColorValue(raw)) return String(fallback || '#1A1A1A').toUpperCase();
+    if (raw.length === 4) {
+      raw = '#' + raw.charAt(1) + raw.charAt(1) + raw.charAt(2) + raw.charAt(2) + raw.charAt(3) + raw.charAt(3);
+    }
+    return raw.toUpperCase();
+  }
+
   async function uploadVitrineImageWithFallback(payload) {
     var actions = ['uploadVitrineImage', 'uploadHeroBg', 'uploadStoreImage'];
     var lastErr = '';
     var res = null;
+    var purpose = String((payload && payload.purpose) || 'hero_bg').toLowerCase();
+    var configKey = storefrontConfigKeyForPurpose(purpose);
     for (var i = 0; i < actions.length; i++) {
       res = await erpCall(actions[i], payload);
       if (res && res.success) return res;
@@ -130,9 +203,9 @@
     var up = await erpCall('uploadProductImage', {
       base64: payload.base64,
       mimeType: payload.mimeType,
-      fileName: payload.fileName || ('hero_bg.' + ext),
+      fileName: payload.fileName || (purpose + '.' + ext),
       categoria: '_Vitrine',
-      produto_id: 'hero_bg'
+      produto_id: purpose
     });
     if (!up || !up.success) {
       return {
@@ -140,9 +213,13 @@
         error: (up && up.error) || lastErr || 'Upload impossible. Redéployez le script Google Apps Script (api_apps_script.gs).'
       };
     }
-    try {
-      await erpCall('updateConfig', { vitrine_hero_bg_url: up.url });
-    } catch (cfgErr) { /* URL Drive suffit si CONFIG échoue */ }
+    if (configKey) {
+      try {
+        var patch = {};
+        patch[configKey] = up.url;
+        await erpCall('updateConfig', patch);
+      } catch (cfgErr) { /* URL Drive suffit si CONFIG échoue */ }
+    }
     return { success: true, url: up.url, fileId: up.fileId, thumbnailUrl: up.thumbnailUrl, fallback: true };
   }
 
@@ -824,8 +901,42 @@
       '<button type="submit" class="btn-primary wide">' + esc(t().save) + '</button></form>';
   }
 
-  function field(id, label, val) {
-    return '<div class="field"><label>' + esc(label) + '</label><input id="' + id + '" value="' + esc(val) + '"/></div>';
+  function field(id, label, val, opts) {
+    opts = opts || {};
+    var placeholder = opts.placeholder ? ' placeholder="' + esc(opts.placeholder) + '"' : '';
+    var help = opts.help ? '<p class="field-help">' + esc(opts.help) + '</p>' : '';
+    return '<div class="field"><label>' + esc(label) + '</label><input id="' + id + '" value="' + esc(val) + '"' + placeholder + '/>' + help + '</div>';
+  }
+
+  function colorField(id, label, val, opts) {
+    opts = opts || {};
+    var hex = normalizeHexColor(val, opts.fallback || '#1A1A1A');
+    var help = opts.help ? '<p class="field-help">' + esc(opts.help) + '</p>' : '';
+    return '<div class="field"><label>' + esc(label) + '</label>' +
+      '<div class="color-field">' +
+      '<input type="color" class="color-picker" id="picker_' + id + '" value="' + esc(hex) + '" oninput="Admin.syncColorField(\'' + id + '\', this.value)"/>' +
+      '<input id="' + id + '" value="' + esc(hex) + '" placeholder="' + esc(hex) + '" oninput="Admin.syncColorField(\'' + id + '\', this.value, true)" onchange="Admin.syncColorField(\'' + id + '\', this.value, true)"/>' +
+      '</div>' + help + '</div>';
+  }
+
+  function syncColorField(id, value, fromText) {
+    var input = $(id);
+    var picker = $('picker_' + id);
+    if (!input) return;
+    var fallback = input.value || (picker && picker.value) || '#1A1A1A';
+    if (fromText) {
+      var raw = String(value || '').trim();
+      if (!raw) return;
+      if (raw.charAt(0) !== '#') raw = '#' + raw;
+      if (!isHexColorValue(raw)) return;
+      var normalized = normalizeHexColor(raw, fallback);
+      input.value = normalized;
+      if (picker) picker.value = normalized;
+      return;
+    }
+    var hex = normalizeHexColor(value, fallback);
+    input.value = hex;
+    if (picker) picker.value = hex;
   }
 
   function check(id, label, val) {
@@ -833,21 +944,39 @@
     return '<label class="check-row"><input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '/> ' + esc(label) + '</label>';
   }
 
+  function vitrineExampleSet(lang) {
+    return VITRINE_TEXT_EXAMPLES[lang] || VITRINE_TEXT_EXAMPLES.pt;
+  }
+
+  function vitrineExampleHelp(example) {
+    if (!example) return '';
+    var v = t().vit || {};
+    return (v.exampleLabel || 'Exemple actuellement visible sur la vitrine :') + ' ' + example;
+  }
+
   function vitrineLangBlock() {
     var v = t().vit || {};
     var lg = state.vitrineEditLang || 'pt';
     var sf = state.storefront || {};
     var c = (sf.content && sf.content[lg]) || {};
+    var ex = vitrineExampleSet(lg);
     var langs = ['pt', 'fr', 'en', 'es'];
     return '<div class="lang-tabs">' + langs.map(function (code) {
       return '<button type="button" class="tab' + (lg === code ? ' on' : '') + '" onclick="Admin.setVitrineLang(\'' + code + '\')">' + code.toUpperCase() + '</button>';
     }).join('') + '</div>' +
-      field('vit_hEye', v.hEye, c.hEye || '') +
-      field('vit_hTitle', v.hTitle, c.hTitle || '') +
-      field('vit_hSub', v.hSub, c.hSub || '') +
-      '<div class="fgrid">' + field('vit_hBtn1', v.hBtn1, c.hBtn1 || '') + field('vit_hBtn2', v.hBtn2, c.hBtn2 || '') + '</div>' +
-      '<div class="fgrid">' + field('vit_shopLabel', v.shopLabel, c.shopLabel || '') + field('vit_shopTitle', v.shopTitle, c.shopTitle || '') + '</div>' +
-      field('vit_fDesc', v.fDesc, c.fDesc || '');
+      '<p class="field-help">' + esc(v.examplesNote || 'Les exemples ci-dessous reprennent les textes actuellement visibles sur la vitrine.') + '</p>' +
+      field('vit_hEye', v.hEye, c.hEye || '', { placeholder: ex.hEye, help: vitrineExampleHelp(ex.hEye) }) +
+      field('vit_hTitle', v.hTitle, c.hTitle || '', { placeholder: ex.hTitle, help: vitrineExampleHelp(ex.hTitle) }) +
+      field('vit_hSub', v.hSub, c.hSub || '', { placeholder: ex.hSub, help: vitrineExampleHelp(ex.hSub) }) +
+      '<div class="fgrid">' +
+      field('vit_hBtn1', v.hBtn1, c.hBtn1 || '', { placeholder: ex.hBtn1, help: vitrineExampleHelp(ex.hBtn1) }) +
+      field('vit_hBtn2', v.hBtn2, c.hBtn2 || '', { placeholder: ex.hBtn2, help: vitrineExampleHelp(ex.hBtn2) }) +
+      '</div>' +
+      '<div class="fgrid">' +
+      field('vit_shopLabel', v.shopLabel, c.shopLabel || '', { placeholder: ex.shopLabel, help: vitrineExampleHelp(ex.shopLabel) }) +
+      field('vit_shopTitle', v.shopTitle, c.shopTitle || '', { placeholder: ex.shopTitle, help: vitrineExampleHelp(ex.shopTitle) }) +
+      '</div>' +
+      field('vit_fDesc', v.fDesc, c.fDesc || '', { placeholder: ex.fDesc, help: vitrineExampleHelp(ex.fDesc) });
   }
 
   function renderVitrine() {
@@ -855,21 +984,36 @@
     var sf = state.storefront || {};
     var colors = sf.colors || {};
     var social = sf.social || {};
+    var logoUrl = sf.logoUrl || '';
     var heroUrl = sf.heroBgUrl || '';
     var promoOn = sf.promoOn === '1' || sf.promoOn === 1 || String(sf.promoOn).toLowerCase() === 'true';
     return '<p class="hint-block">' + esc(v.subtitle) + '</p>' +
       '<form class="config-form" onsubmit="event.preventDefault();Admin.saveStorefront()">' +
       '<section class="panel"><h2>' + esc(v.brand) + '</h2>' +
       field('vit_store_name', v.storeName, sf.storeName || '') +
-      field('vit_logo_url', v.logoUrl, sf.logoUrl || '') +
+      '<div class="field"><label>' + esc(v.logoUpload || 'Joindre le logo') + '</label>' +
+      (logoUrl ? '<div class="hero-preview logo-preview"><img id="vitLogoPreview" src="' + esc(logoUrl) + '" alt=""/></div>' : '<div class="hero-preview empty logo-preview" id="vitLogoPreviewWrap"><span>' + esc(v.logoUpload || 'Joindre le logo') + '</span></div>') +
+      '<input type="file" accept="image/*,.jpg,.jpeg,.jfif,.png,.webp,.gif,.bmp,.tif,.tiff,.svg,.heic,.heif,.avif,.ico" id="vit_logo_file" onchange="Admin.uploadStoreLogo(this)"/>' +
+      '<p class="field-help">' + esc(v.logoFormats || v.heroFormats || 'Formats acceptes : JPG, PNG, WebP, SVG, ICO (max 8 Mo).') + '</p>' +
+      '</div>' +
+      field('vit_logo_url', v.logoUrl, logoUrl, {
+        help: v.logoUrlHelp || 'Le logo est enregistre dans Google Drive si vous le telechargez ici, puis son URL est sauvegardee dans CONFIG.'
+      }) +
       '<div class="field"><label>' + esc(v.heroBg) + '</label>' +
       (heroUrl ? '<div class="hero-preview"><img id="vitHeroPreview" src="' + esc(heroUrl) + '" alt=""/></div>' : '<div class="hero-preview empty" id="vitHeroPreviewWrap"><span>' + esc(v.heroUpload) + '</span></div>') +
-      '<input type="file" accept="image/jpeg,image/png,image/webp,image/gif,image/bmp,image/tiff,image/svg+xml,image/heic,image/heif,image/avif,.jpg,.jpeg,.png,.webp,.gif,.bmp,.tif,.tiff,.svg,.heic,.heif,.avif" id="vit_hero_file" onchange="Admin.uploadHeroBg(this)"/>' +
+      '<input type="file" accept="image/*,.jpg,.jpeg,.jfif,.png,.webp,.gif,.bmp,.tif,.tiff,.svg,.heic,.heif,.avif,.ico" id="vit_hero_file" onchange="Admin.uploadHeroBg(this)"/>' +
+      '<p class="field-help">' + esc(v.heroFormats || 'Formats acceptes : JPG, JFIF, PNG, WebP, GIF, BMP, TIFF, SVG, HEIC, HEIF, AVIF, ICO (max 8 Mo). Vous pouvez aussi coller une URL ci-dessous.') + '</p>' +
       field('vit_hero_bg_url', v.heroUrl, heroUrl) +
       '</div>' +
       '<div class="fgrid">' +
-      field('vit_color_main', v.colorMain, colors.main || '#1a1a1a') +
-      field('vit_color_accent', v.colorAccent, colors.accent || '#c9a96e') +
+      colorField('vit_color_main', v.colorMain, colors.main || '#1A1A1A', {
+        fallback: '#1A1A1A',
+        help: v.colorHelp || 'Cliquez sur la pastille pour choisir une couleur, ou saisissez un code hex (#1A1A1A).'
+      }) +
+      colorField('vit_color_accent', v.colorAccent, colors.accent || '#C9A96E', {
+        fallback: '#C9A96E',
+        help: v.colorHelp || 'Cliquez sur la pastille pour choisir une couleur, ou saisissez un code hex (#C9A96E).'
+      }) +
       '</div>' +
       field('vit_def_lang', v.defLang, sf.defaultLang || 'pt') +
       '</section>' +
@@ -889,7 +1033,10 @@
       '</section>' +
       '<section class="panel"><h2>' + esc(v.promo) + '</h2>' +
       check('vit_promo_on', v.promoOn, promoOn ? '1' : '0') +
-      field('vit_promo_text', v.promoText, sf.promoText || '') +
+      field('vit_promo_text', v.promoText, sf.promoText || '', {
+        placeholder: vitrineExampleSet(state.vitrineEditLang || 'pt').promoText,
+        help: vitrineExampleHelp(vitrineExampleSet(state.vitrineEditLang || 'pt').promoText)
+      }) +
       '</section>' +
       '<button type="submit" class="btn-primary wide">' + esc(t().save) + '</button></form>';
   }
@@ -928,7 +1075,7 @@
     }
     if (file.size > 8 * 1024 * 1024) { toast(v.imgSizeError || 'Image trop volumineuse (max 8 Mo)', 'e'); return; }
     try {
-      toast(v.uploading || t().loading, 'i');
+      toast((v.uploading || t().loading) + ' ' + (file.name || ''), 'i');
       var dataUrl = await fileToBase64(file);
       var b64 = String(dataUrl).split(',')[1] || dataUrl;
       var res = await uploadVitrineImageWithFallback({
@@ -955,23 +1102,89 @@
     if (input) input.value = '';
   }
 
+  async function uploadStoreLogo(input) {
+    var v = t().vit || {};
+    var file = input && input.files && input.files[0];
+    if (!file) return;
+    var mime = resolveImageMimeType(file);
+    if (!isAllowedHeroImage(file, mime)) {
+      toast(v.imgTypeError || 'Format d\'image non supporté', 'e');
+      if (input) input.value = '';
+      return;
+    }
+    if (file.size > 8 * 1024 * 1024) {
+      toast(v.imgSizeError || 'Image trop volumineuse (max 8 Mo)', 'e');
+      if (input) input.value = '';
+      return;
+    }
+    try {
+      toast((v.uploading || t().loading) + ' ' + (file.name || ''), 'i');
+      var dataUrl = await fileToBase64(file);
+      var b64 = String(dataUrl).split(',')[1] || dataUrl;
+      var res = await uploadVitrineImageWithFallback({
+        base64: b64,
+        mimeType: mime,
+        fileName: file.name,
+        purpose: 'logo'
+      });
+      if (!res || !res.success) {
+        var err = (res && res.error) || t().error;
+        if (isUnknownActionError(err)) {
+          err = v.apiDeployHint || 'Redéployez api_apps_script.gs dans Google Apps Script (Déployer → Application Web → nouvelle version).';
+        }
+        toast(err, 'e');
+        return;
+      }
+      if (!state.storefront) state.storefront = { content: {} };
+      state.storefront.logoUrl = res.url;
+      var urlEl = $('vit_logo_url');
+      if (urlEl) urlEl.value = res.url;
+      renderMain();
+      toast(t().saved, 's');
+    } catch (e) {
+      toast(apiErrMsg(e), 'e');
+    }
+    if (input) input.value = '';
+  }
+
+  function syncStorefrontDraft() {
+    if (!state.storefront) state.storefront = { content: {} };
+    state.storefront.storeName = val('vit_store_name').trim();
+    state.storefront.logoUrl = val('vit_logo_url').trim();
+    state.storefront.heroBgUrl = val('vit_hero_bg_url').trim();
+    state.storefront.colors = {
+      main: normalizeHexColor(val('vit_color_main'), '#1A1A1A'),
+      accent: normalizeHexColor(val('vit_color_accent'), '#C9A96E')
+    };
+    state.storefront.defaultLang = val('vit_def_lang').trim() || 'pt';
+    state.storefront.social = {
+      instagram: val('vit_social_insta').trim(),
+      facebook: val('vit_social_fb').trim(),
+      pinterest: val('vit_social_pin').trim(),
+      tiktok: val('vit_social_tik').trim()
+    };
+    state.storefront.promoOn = chk('vit_promo_on');
+    state.storefront.promoText = val('vit_promo_text').trim();
+    return state.storefront;
+  }
+
   async function saveStorefront() {
     collectVitrineLangFields();
-    var sf = state.storefront || { content: {} };
+    var sf = syncStorefrontDraft();
     try {
       var res = await erpCall('updateStorefront', {
-        storeName: val('vit_store_name'),
-        logoUrl: val('vit_logo_url'),
-        heroBgUrl: val('vit_hero_bg_url') || sf.heroBgUrl,
-        color_main: val('vit_color_main'),
-        color_accent: val('vit_color_accent'),
-        defaultLang: val('vit_def_lang'),
-        social_instagram: val('vit_social_insta'),
-        social_facebook: val('vit_social_fb'),
-        social_pinterest: val('vit_social_pin'),
-        social_tiktok: val('vit_social_tik'),
-        promo_banner_enabled: chk('vit_promo_on'),
-        promo_banner_text: val('vit_promo_text'),
+        storeName: sf.storeName,
+        logoUrl: sf.logoUrl,
+        heroBgUrl: sf.heroBgUrl,
+        color_main: sf.colors.main,
+        color_accent: sf.colors.accent,
+        defaultLang: sf.defaultLang,
+        social_instagram: sf.social.instagram,
+        social_facebook: sf.social.facebook,
+        social_pinterest: sf.social.pinterest,
+        social_tiktok: sf.social.tiktok,
+        promo_banner_enabled: sf.promoOn,
+        promo_banner_text: sf.promoText,
         content: sf.content
       });
       if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
@@ -1443,6 +1656,8 @@
     setVitrineLang: setVitrineLang,
     saveStorefront: saveStorefront,
     uploadHeroBg: uploadHeroBg,
+    uploadStoreLogo: uploadStoreLogo,
+    syncColorField: syncColorField,
     editAdminUser: editAdminUser,
     saveAdminUser: saveAdminUser,
     editCoupon: editCoupon,
