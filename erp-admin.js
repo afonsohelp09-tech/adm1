@@ -1230,7 +1230,7 @@
     collectVitrineLangFields();
     var sf = syncStorefrontDraft();
     postKeepalive('updateConfig', buildStorefrontConfigPatch(sf));
-    if (sf.storeName) postKeepalive('updateEmpresa', { nome: sf.storeName });
+    postKeepalive('updateEmpresa', { nome: sf.storeName || '' });
     storefrontAutosaveDirty = false;
   }
 
@@ -1280,12 +1280,18 @@
       content: sf.content
     };
     var res = await erpCall('updateStorefront', payload);
-    if (res && res.success) return res;
+    if (res && res.success) {
+      try { await erpCall('updateEmpresa', { nome: sf.storeName || '' }); } catch (e0) { /* ignore */ }
+      return res;
+    }
     var err = (res && res.error) || '';
     if (!isUnknownActionError(err)) return res;
 
     var legacyRes = await erpCall('updateStoreDesign', payload);
-    if (legacyRes && legacyRes.success) return legacyRes;
+    if (legacyRes && legacyRes.success) {
+      try { await erpCall('updateEmpresa', { nome: sf.storeName || '' }); } catch (e1) { /* ignore */ }
+      return legacyRes;
+    }
     err = (legacyRes && legacyRes.error) || err;
     if (!isUnknownActionError(err)) return legacyRes;
 
