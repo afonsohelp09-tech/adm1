@@ -356,6 +356,65 @@
     updateImagePreview();
   }
 
+  function compressImageFile(file, done) {
+    if (!file || !file.type || file.type.indexOf('image/') !== 0) {
+      done(null);
+      return;
+    }
+    var reader = new FileReader();
+    reader.onload = function (ev) {
+      var img = new Image();
+      img.onload = function () {
+        var maxW = 1600;
+        var iw = img.width || maxW;
+        var ih = img.height || maxW;
+        var scale = Math.min(1, maxW / iw);
+        var w = Math.max(1, Math.round(iw * scale));
+        var h = Math.max(1, Math.round(ih * scale));
+        var canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0, w, h);
+        if (!canvas.toBlob) {
+          done({
+            preview: ev.target.result,
+            base64: String(ev.target.result).split(',')[1],
+            mime: file.type,
+            fileName: file.name || 'photo.jpg'
+          });
+          return;
+        }
+        canvas.toBlob(function (blob) {
+          if (!blob) {
+            done({
+              preview: ev.target.result,
+              base64: String(ev.target.result).split(',')[1],
+              mime: file.type,
+              fileName: file.name || 'photo.jpg'
+            });
+            return;
+          }
+          var fr = new FileReader();
+          fr.onload = function (e2) {
+            var dataUrl = e2.target.result;
+            done({
+              preview: dataUrl,
+              base64: String(dataUrl).split(',')[1],
+              mime: 'image/webp',
+              fileName: String(file.name || 'photo').replace(/\.[^.]+$/, '') + '.webp'
+            });
+          };
+          fr.readAsDataURL(blob);
+        }, 'image/webp', 0.85);
+      };
+      img.onerror = function () { done(null); };
+      img.src = ev.target.result;
+    };
+    reader.onerror = function () { done(null); };
+    reader.readAsDataURL(file);
+  }
+
   function handleImageFile(file) {
     if (!file || !file.type || file.type.indexOf('image/') !== 0) {
       toast(w().imgTypeError || 'Image invalide', 'e');
@@ -365,18 +424,18 @@
       toast(w().imgSizeError || 'Max 6 Mo', 'e');
       return;
     }
-    var reader = new FileReader();
-    reader.onload = function (ev) {
-      var dataUrl = ev.target.result;
-      wiz.imagePreview = dataUrl;
-      var parts = String(dataUrl).split(',');
-      wiz.imageBase64 = parts.length > 1 ? parts[1] : '';
-      wiz.imageMime = file.type;
-      wiz.imageFileName = file.name || 'photo.jpg';
+    compressImageFile(file, function (pack) {
+      if (!pack) {
+        toast(w().imgTypeError || 'Image invalide', 'e');
+        return;
+      }
+      wiz.imagePreview = pack.preview;
+      wiz.imageBase64 = pack.base64;
+      wiz.imageMime = pack.mime;
+      wiz.imageFileName = pack.fileName;
       wiz.imageUrl = '';
       updatePreview();
-    };
-    reader.readAsDataURL(file);
+    });
   }
 
   function bindUploadZone() {
@@ -447,7 +506,10 @@
       produto_id: produtoId
     });
     if (!up || !up.success) throw new Error((up && up.error) || w().uploadError || 'Upload échoué');
-    return up.thumbnailUrl || up.url || '';
+    return {
+      url: up.url || up.thumbnailUrl || '',
+      fileId: up.fileId || up.drive_file_id || ''
+    };
   }
 
   function wizardHtml(isEdit) {
@@ -596,12 +658,13 @@
         return;
       }
       if (wiz.imageBase64 && prodId) {
-        imageUrl = await uploadImageToDrive(prodId, wiz.categoria);
-        if (imageUrl) {
-          var variants = buildVariants(imageUrl);
+        var uploaded = await uploadImageToDrive(prodId, wiz.categoria);
+        if (uploaded && uploaded.url) {
+          var variants = buildVariants(uploaded.url);
           await deps.erpCall('updateProduct', {
             produto_id: prodId,
-            imagem: imageUrl,
+            imagem: uploaded.url,
+            drive_file_id: uploaded.fileId || '',
             variantes: variants,
             replace_variants: true
           });

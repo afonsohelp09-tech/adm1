@@ -108,7 +108,7 @@
         }
         return '<tr>' +
           '<td class="chk-cell"><input type="checkbox"' + checked + ' onchange="Admin.toggleProductSelect(\'' + pid + '\', this.checked)"/></td>' +
-          '<td class="thumb-cell">' + productThumb(pr.imagem) + '</td>' +
+          '<td class="thumb-cell">' + productThumb(pr.imagem_thumb_sm || pr.imagem) + '</td>' +
           '<td><strong>' + esc(pr.nome) + '</strong><br/><span class="row-meta">' + esc(pr.produto_id) + (vCount ? ' · ' + vCount + ' ' + esc(p.variants) : '') + '</span></td>' +
           '<td>' + esc(pr.categoria) + '</td><td>' + esc(pr.preco_final) + '</td><td>' + esc(pr.stock_total != null ? pr.stock_total : '—') + '</td>' +
           '<td>' + statusBadge(pr) + '</td><td class="actions">' + actions + '</td></tr>';
