@@ -109,7 +109,16 @@
     return API && API.indexOf('INSEREZ') === -1 && API.indexOf('/exec') > -1;
   }
 
-  async function erpCall(action, data) {
+  function isNoAuthResponse(json) {
+    return !!(json && (json.code === 'NO_AUTH' || /não autorizado|non autorisé|not authorized/i.test(String(json.error || ''))));
+  }
+
+  function isSpreadsheetBindingError(msg) {
+    return /liaison classeur|ERP_SPREADSHEET_ID|bindActiveSpreadsheet/i.test(String(msg || ''));
+  }
+
+  async function erpCall(action, data, opts) {
+    opts = opts || {};
     if (!apiOk()) throw new Error('API_URL');
     var res = await fetch(API, {
       method: 'POST',
@@ -118,7 +127,21 @@
       body: JSON.stringify({ action: action, data: data || {}, token: state.token || '' })
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
-    return res.json();
+    var json = await res.json();
+    if (!opts._noRetry && isNoAuthResponse(json) && state.token && action !== 'adminLogin' && action !== 'validateToken') {
+      try {
+        var refreshed = await erpCall('refreshAdminToken', {}, { _noRetry: true });
+        if (refreshed && refreshed.success) {
+          return erpCall(action, data, { _noRetry: true });
+        }
+      } catch (refreshErr) { /* ignore */ }
+      logout(true);
+      toast(t().sessionExpired || 'Session expirée — reconnectez-vous', 'e');
+    }
+    if (json && !json.success && isSpreadsheetBindingError(json.error)) {
+      json.error = (json.error || '') + ' — Ouvrez Google Sheets → menu « ERP Vente en ligne » → « Enregistrer la liaison avec ce classeur », puis redéployez la Web App.';
+    }
+    return json;
   }
 
   function toast(msg, type) {
@@ -1319,7 +1342,10 @@
     try {
       var res = await saveStorefrontWithFallback(sf);
       if (!res || !res.success) {
-        if (!opts.silent) toast((res && res.error) || t().error, 'e');
+        var errMsg = (res && res.error) || t().error;
+        if (!opts.silent || isNoAuthResponse(res) || isSpreadsheetBindingError(errMsg)) {
+          toast(errMsg, 'e');
+        }
         return;
       }
       storefrontAutosaveDirty = false;
