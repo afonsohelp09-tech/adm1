@@ -213,6 +213,60 @@
     return raw.toUpperCase();
   }
 
+  var HERO_BG_CHUNK_BYTES = 2.5 * 1024 * 1024;
+  var HERO_BG_SINGLE_MAX_BYTES = 5 * 1024 * 1024;
+  var HERO_BG_MAX_BYTES = 500 * 1024 * 1024;
+
+  function arrayBufferToBase64(buffer) {
+    var bytes = new Uint8Array(buffer);
+    var bin = '';
+    var step = 0x8000;
+    for (var i = 0; i < bytes.length; i += step) {
+      bin += String.fromCharCode.apply(null, bytes.subarray(i, i + step));
+    }
+    return btoa(bin);
+  }
+
+  function formatUploadSize(bytes) {
+    if (bytes >= 1024 * 1024 * 1024) return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' Go';
+    if (bytes >= 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' Mo';
+    if (bytes >= 1024) return Math.round(bytes / 1024) + ' Ko';
+    return bytes + ' o';
+  }
+
+  async function uploadVitrineImageChunked(file, mime, purpose) {
+    var v = t().vit || {};
+    var totalChunks = Math.ceil(file.size / HERO_BG_CHUNK_BYTES);
+    var begin = await erpCall('beginVitrineImageUpload', {
+      purpose: purpose,
+      fileName: file.name,
+      mimeType: mime,
+      totalSize: file.size,
+      totalChunks: totalChunks
+    });
+    if (!begin || !begin.success) return begin;
+    var sessionId = begin.sessionId;
+    for (var i = 0; i < totalChunks; i++) {
+      var start = i * HERO_BG_CHUNK_BYTES;
+      var slice = file.slice(start, Math.min(start + HERO_BG_CHUNK_BYTES, file.size));
+      var buf = await slice.arrayBuffer();
+      var chunkRes = await erpCall('uploadVitrineImageChunk', {
+        sessionId: sessionId,
+        index: i,
+        base64: arrayBufferToBase64(buf)
+      });
+      if (!chunkRes || !chunkRes.success) return chunkRes;
+      var pct = Math.round(((i + 1) / totalChunks) * 100);
+      toast((v.uploading || 'Envoi…') + ' ' + pct + '% (' + formatUploadSize(file.size) + ')', 'i');
+    }
+    return erpCall('finishVitrineImageUpload', {
+      sessionId: sessionId,
+      purpose: purpose,
+      fileName: file.name,
+      mimeType: mime
+    });
+  }
+
   async function uploadVitrineImageWithFallback(payload) {
     var actions = ['uploadVitrineImage', 'uploadHeroBg', 'uploadStoreImage'];
     var lastErr = '';
@@ -1036,7 +1090,7 @@
       '<div class="field"><label>' + esc(v.heroBg) + '</label>' +
       (heroUrl ? '<div class="hero-preview"><img id="vitHeroPreview" src="' + esc(heroUrl) + '" alt=""/></div>' : '<div class="hero-preview empty" id="vitHeroPreviewWrap"><span>' + esc(v.heroUpload) + '</span></div>') +
       '<input type="file" accept="image/*,.jpg,.jpeg,.jfif,.png,.webp,.gif,.bmp,.tif,.tiff,.svg,.heic,.heif,.avif,.ico" id="vit_hero_file" onchange="Admin.uploadHeroBg(this)"/>' +
-      '<p class="field-help">' + esc(v.heroFormats || 'Formats acceptes : JPG, JFIF, PNG, WebP, GIF, BMP, TIFF, SVG, HEIC, HEIF, AVIF, ICO (max 8 Mo). Vous pouvez aussi coller une URL ci-dessous.') + '</p>' +
+      '<p class="field-help">' + esc(v.heroFormats || 'Formats acceptes : JPG, JFIF, PNG, WebP, GIF, BMP, TIFF, SVG, HEIC, HEIF, AVIF, ICO — fichiers lourds acceptes (jusqu\'a 500 Mo). Vous pouvez aussi coller une URL ci-dessous.') + '</p>' +
       field('vit_hero_bg_url', v.heroUrl, heroUrl) +
       '</div>' +
       '<div class="fgrid">' +
@@ -1140,17 +1194,26 @@
       if (input) input.value = '';
       return;
     }
-    if (file.size > 8 * 1024 * 1024) { toast(v.imgSizeError || 'Image trop volumineuse (max 8 Mo)', 'e'); return; }
+    if (file.size > HERO_BG_MAX_BYTES) {
+      toast(v.heroSizeError || ('Image trop volumineuse (max 500 Mo). Collez une URL Google Drive dans le champ ci-dessous.'), 'e');
+      if (input) input.value = '';
+      return;
+    }
     try {
-      toast((v.uploading || t().loading) + ' ' + (file.name || ''), 'i');
-      var dataUrl = await fileToBase64(file);
-      var b64 = String(dataUrl).split(',')[1] || dataUrl;
-      var res = await uploadVitrineImageWithFallback({
-        base64: b64,
-        mimeType: mime,
-        fileName: file.name,
-        purpose: 'hero_bg'
-      });
+      toast((v.uploading || t().loading) + ' ' + (file.name || '') + ' (' + formatUploadSize(file.size) + ')', 'i');
+      var res;
+      if (file.size > HERO_BG_SINGLE_MAX_BYTES) {
+        res = await uploadVitrineImageChunked(file, mime, 'hero_bg');
+      } else {
+        var dataUrl = await fileToBase64(file);
+        var b64 = String(dataUrl).split(',')[1] || dataUrl;
+        res = await uploadVitrineImageWithFallback({
+          base64: b64,
+          mimeType: mime,
+          fileName: file.name,
+          purpose: 'hero_bg'
+        });
+      }
       if (!res || !res.success) {
         var err = (res && res.error) || t().error;
         if (isUnknownActionError(err)) {
