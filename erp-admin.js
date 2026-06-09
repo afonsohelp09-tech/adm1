@@ -188,7 +188,35 @@
   }
 
   function isUnknownActionError(msg) {
-    return /desconhecida|unknown|inconnu|desconocida|inconnue/i.test(String(msg || ''));
+    return /desconhecida|unknown|inconnu|desconocida|inconnue|em falta|ausente|missing/i.test(String(msg || ''));
+  }
+
+  var VITRINE_LANGS = ['pt', 'fr', 'en', 'es'];
+
+  function buildStorefrontContentFromSettings(st) {
+    var content = {};
+    VITRINE_LANGS.forEach(function (lg) {
+      content[lg] = {
+        hEye: String(st['vitrine_hero_eyebrow_' + lg] || '').trim(),
+        hTitle: String(st['vitrine_hero_title_' + lg] || '').trim(),
+        hSub: String(st['vitrine_hero_sub_' + lg] || '').trim(),
+        hBtn1: String(st['vitrine_hero_btn1_' + lg] || '').trim(),
+        hBtn2: String(st['vitrine_hero_btn2_' + lg] || '').trim(),
+        shopLabel: String(st['vitrine_shop_label_' + lg] || '').trim(),
+        shopTitle: String(st['vitrine_shop_title_' + lg] || '').trim(),
+        fDesc: String(st['vitrine_footer_desc_' + lg] || st.boutique_footer_tagline || '').trim()
+      };
+    });
+    return content;
+  }
+
+  function buildStorefrontSocialFromSettings(st) {
+    return {
+      instagram: String(st.social_instagram || '').trim(),
+      facebook: String(st.social_facebook || '').trim(),
+      pinterest: String(st.social_pinterest || '').trim(),
+      tiktok: String(st.social_tiktok || '').trim()
+    };
   }
 
   function storefrontConfigKeyForPurpose(purpose) {
@@ -234,6 +262,20 @@
     return bytes + ' o';
   }
 
+  function isUploadSizeError(msg) {
+    return /volumineuse|too large|demasiado|tropo grande|8 Mo|8 MB|max 8/i.test(String(msg || ''));
+  }
+
+  async function fileToVitrineUploadPayload(file, mime, purpose) {
+    var dataUrl = await fileToBase64(file);
+    return {
+      base64: String(dataUrl).split(',')[1] || dataUrl,
+      mimeType: mime,
+      fileName: file.name,
+      purpose: purpose || 'hero_bg'
+    };
+  }
+
   async function uploadVitrineImageChunked(file, mime, purpose) {
     var v = t().vit || {};
     var totalChunks = Math.ceil(file.size / HERO_BG_CHUNK_BYTES);
@@ -244,7 +286,12 @@
       totalSize: file.size,
       totalChunks: totalChunks
     });
-    if (!begin || !begin.success) return begin;
+    if (!begin || !begin.success) {
+      if (isUnknownActionError((begin && begin.error) || '')) {
+        return { success: false, error: '__chunk_api_missing__' };
+      }
+      return begin;
+    }
     var sessionId = begin.sessionId;
     for (var i = 0; i < totalChunks; i++) {
       var start = i * HERO_BG_CHUNK_BYTES;
@@ -680,15 +727,19 @@
     var res = await erpCall('getStoreData', {});
     if (!res || !res.success) return;
     var st = res.settings || {};
+    var content = res.content || {};
+    if (!content || !Object.keys(content).length) content = buildStorefrontContentFromSettings(st);
+    var social = res.social || {};
+    if (!social || !Object.keys(social).length) social = buildStorefrontSocialFromSettings(st);
     state.storefront = {
-      storeName: res.storeName || '',
-      logoUrl: res.logoUrl || '',
-      heroBgUrl: res.heroBgUrl || '',
-      tagline: res.tagline || '',
-      colors: res.colors || { main: '#1a1a1a', accent: '#c9a96e' },
-      defaultLang: res.defaultLang || 'pt',
-      content: res.content || {},
-      social: res.social || {},
+      storeName: res.storeName || st.site_name || '',
+      logoUrl: res.logoUrl || st.store_logo_url || '',
+      heroBgUrl: res.heroBgUrl || st.vitrine_hero_bg_url || '',
+      tagline: res.tagline || st.boutique_footer_tagline || '',
+      colors: res.colors || { main: st.color_main || '#1a1a1a', accent: st.color_accent || '#c9a96e' },
+      defaultLang: res.defaultLang || st.boutique_default_lang || 'pt',
+      content: content,
+      social: social,
       promoOn: st.promo_banner_enabled,
       promoText: st.promo_banner_text || ''
     };
@@ -1201,23 +1252,23 @@
     }
     try {
       toast((v.uploading || t().loading) + ' ' + (file.name || '') + ' (' + formatUploadSize(file.size) + ')', 'i');
-      var res;
-      if (file.size > HERO_BG_SINGLE_MAX_BYTES) {
-        res = await uploadVitrineImageChunked(file, mime, 'hero_bg');
-      } else {
-        var dataUrl = await fileToBase64(file);
-        var b64 = String(dataUrl).split(',')[1] || dataUrl;
-        res = await uploadVitrineImageWithFallback({
-          base64: b64,
-          mimeType: mime,
-          fileName: file.name,
-          purpose: 'hero_bg'
-        });
+      var payload = await fileToVitrineUploadPayload(file, mime, 'hero_bg');
+      var res = await uploadVitrineImageWithFallback(payload);
+      if ((!res || !res.success) && file.size > HERO_BG_SINGLE_MAX_BYTES) {
+        var needChunk = !res || isUnknownActionError(res.error) || isUploadSizeError(res.error) || res.error === '__chunk_api_missing__';
+        if (needChunk) {
+          var chunked = await uploadVitrineImageChunked(file, mime, 'hero_bg');
+          if (chunked && chunked.success) res = chunked;
+          else if (chunked && chunked.error !== '__chunk_api_missing__') res = chunked;
+        }
       }
       if (!res || !res.success) {
         var err = (res && res.error) || t().error;
-        if (isUnknownActionError(err)) {
+        if (err === '__chunk_api_missing__' || isUnknownActionError(err)) {
           err = v.apiDeployHint || 'Redéployez api_apps_script.gs dans Google Apps Script (Déployer → Application Web → nouvelle version).';
+        }
+        if (file.size > HERO_BG_SINGLE_MAX_BYTES && (isUnknownActionError(err) || /copie api_apps_script|redéployez|nova versão/i.test(err))) {
+          err = (err || '') + ' ' + (v.heroSizeError || 'Pour les images > 5 Mo sans redéploiement, collez une URL Google Drive ci-dessous.');
         }
         toast(err, 'e');
         return;
@@ -1312,7 +1363,7 @@
   }
 
   function flushStorefrontAutosave() {
-    if (!storefrontAutosaveDirty || state.view !== 'vitrine') return;
+    if (!storefrontAutosaveDirty || state.view !== 'vitrine' || !state.token) return;
     collectVitrineLangFields();
     var sf = syncStorefrontDraft();
     postKeepalive('updateConfig', buildStorefrontConfigPatch(sf));
@@ -1350,6 +1401,14 @@
   }
 
   async function saveStorefrontWithFallback(sf) {
+    var patch = buildStorefrontConfigPatch(sf);
+    var cfgRes = await erpCall('updateConfig', patch);
+    if (!cfgRes || !cfgRes.success) {
+      if (!isUnknownActionError((cfgRes && cfgRes.error) || '')) return cfgRes || { success: false, error: t().error };
+    } else {
+      try { await erpCall('updateEmpresa', { nome: sf.storeName || '' }); } catch (eEmp) { /* ignore */ }
+    }
+
     var payload = {
       storeName: sf.storeName,
       logoUrl: sf.logoUrl,
@@ -1366,31 +1425,20 @@
       content: sf.content
     };
     var res = await erpCall('updateStorefront', payload);
-    if (res && res.success) {
-      try { await erpCall('updateEmpresa', { nome: sf.storeName || '' }); } catch (e0) { /* ignore */ }
+    if (res && res.success) return res;
+    var err = (res && res.error) || '';
+    if (!isUnknownActionError(err)) {
+      if (cfgRes && cfgRes.success) return { success: true, fallback: true };
       return res;
     }
-    var err = (res && res.error) || '';
-    if (!isUnknownActionError(err)) return res;
 
     var legacyRes = await erpCall('updateStoreDesign', payload);
-    if (legacyRes && legacyRes.success) {
-      try { await erpCall('updateEmpresa', { nome: sf.storeName || '' }); } catch (e1) { /* ignore */ }
-      return legacyRes;
-    }
+    if (legacyRes && legacyRes.success) return legacyRes;
     err = (legacyRes && legacyRes.error) || err;
-    if (!isUnknownActionError(err)) return legacyRes;
+    if (!isUnknownActionError(err) && !(cfgRes && cfgRes.success)) return legacyRes;
 
-    var patch = buildStorefrontConfigPatch(sf);
-    var cfgRes = await erpCall('updateConfig', patch);
-    if (!cfgRes || !cfgRes.success) return cfgRes || { success: false, error: err || t().error };
-
-    try {
-      await erpCall('updateEmpresa', { nome: sf.storeName || '' });
-    } catch (empresaErr) {
-      /* Le nom restera disponible via site_name dans CONFIG. */
-    }
-    return { success: true, fallback: true };
+    if (cfgRes && cfgRes.success) return { success: true, fallback: true };
+    return cfgRes || { success: false, error: err || t().error };
   }
 
   async function saveStorefront(opts) {
@@ -1412,9 +1460,9 @@
         return;
       }
       storefrontAutosaveDirty = false;
+      await loadStorefront();
       if (!opts.silent) {
         toast(t().saved, 's');
-        await loadStorefront();
         renderMain();
       }
     } catch (e) {
