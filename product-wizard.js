@@ -71,6 +71,23 @@
     return null;
   }
 
+  function sortSizesList(sizes) {
+    return sizes.slice().sort(function (a, b) {
+      var ia = SIZE_LIST.indexOf(a);
+      var ib = SIZE_LIST.indexOf(b);
+      if (ia >= 0 && ib >= 0) return ia - ib;
+      if (ia >= 0) return -1;
+      if (ib >= 0) return 1;
+      return String(a).localeCompare(String(b));
+    });
+  }
+
+  function variantColorKey(col) {
+    if (!col) return '';
+    if (String(col.id).indexOf('custom_') === 0) return colorLabel(col);
+    return col.id;
+  }
+
   function findColorByName(name) {
     var n = String(name || '').trim().toLowerCase();
     if (!n) return null;
@@ -139,7 +156,7 @@
       wiz.stockDefault = parseInt(vars[0].stock || vars[0].quantidade, 10) || 10;
       vars.forEach(function (v) {
         if (v.tamanho) wiz.selectedSizes[v.tamanho] = true;
-        var col = findColorByName(v.cor);
+        var col = findColorById(v.cor) || findColorByName(v.cor);
         if (col) wiz.selectedColors[col.id] = true;
         else if (v.cor) {
           var custom = ensureCustomColor(v.cor, '#888888');
@@ -151,7 +168,7 @@
   }
 
   function buildVariants(imageUrl) {
-    var sizes = Object.keys(wiz.selectedSizes);
+    var sizes = sortSizesList(Object.keys(wiz.selectedSizes));
     var colorIds = Object.keys(wiz.selectedColors);
     var out = [];
     var stock = parseInt(String(wiz.stockDefault), 10) || 0;
@@ -161,7 +178,7 @@
         var col = findColorById(cid);
         out.push({
           tamanho: sz,
-          cor: col ? colorLabel(col) : cid,
+          cor: col ? variantColorKey(col) : cid,
           stock: stock,
           imagem_variante: img
         });
@@ -326,7 +343,7 @@
     if (!card) return;
     var p = t().prod;
     var imgSrc = wiz.imagePreview || wiz.imageUrl || '';
-    var sizes = Object.keys(wiz.selectedSizes);
+    var sizes = sortSizesList(Object.keys(wiz.selectedSizes));
     var colorIds = Object.keys(wiz.selectedColors);
     var priceHt = parseFloat(wiz.preco_ht) || 0;
     var tva = parseFloat(wiz.tva) || 23;
