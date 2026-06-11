@@ -43,6 +43,9 @@
     couponForm: null,
     storefront: null,
     vitrineEditLang: 'pt',
+    vitrineGalleryOpen: '',
+    vitrineGalleryImages: [],
+    vitrineGalleryLoading: false,
     adminUsers: []
   };
   var storefrontAutosaveTimer = 0;
@@ -314,19 +317,30 @@
     });
   }
 
+  function vitrineUploadApiMissing() {
+    try { return sessionStorage.getItem('erp_vitrine_upload_api_missing') === '1'; } catch (e) { return false; }
+  }
+
+  function setVitrineUploadApiMissing() {
+    try { sessionStorage.setItem('erp_vitrine_upload_api_missing', '1'); } catch (e) { /* ignore */ }
+  }
+
   async function uploadVitrineImageWithFallback(payload) {
     var actions = ['uploadVitrineImage', 'uploadHeroBg', 'uploadStoreImage'];
     var lastErr = '';
     var res = null;
     var purpose = String((payload && payload.purpose) || 'hero_bg').toLowerCase();
     var configKey = storefrontConfigKeyForPurpose(purpose);
-    for (var i = 0; i < actions.length; i++) {
-      res = await erpCall(actions[i], payload);
-      if (res && res.success) return res;
-      lastErr = (res && res.error) || lastErr;
-      if (!isUnknownActionError(lastErr)) break;
+    if (!vitrineUploadApiMissing()) {
+      for (var i = 0; i < actions.length; i++) {
+        res = await erpCall(actions[i], payload);
+        if (res && res.success) return res;
+        lastErr = (res && res.error) || lastErr;
+        if (!isUnknownActionError(lastErr)) break;
+      }
+      if (!isUnknownActionError(lastErr)) return res || { success: false, error: lastErr };
+      setVitrineUploadApiMissing();
     }
-    if (!isUnknownActionError(lastErr)) return res || { success: false, error: lastErr };
     var ext = (payload.mimeType || 'image/jpeg').split('/').pop().replace('svg+xml', 'svg');
     var up = await erpCall('uploadProductImage', {
       base64: payload.base64,
@@ -1138,11 +1152,13 @@
       field('vit_logo_url', v.logoUrl, logoUrl, {
         help: v.logoUrlHelp || 'Le logo est enregistre dans Google Drive si vous le telechargez ici, puis son URL est sauvegardee dans CONFIG.'
       }) +
+      vitrineGalleryBlock('logo') +
       '<div class="field"><label>' + esc(v.heroBg) + '</label>' +
       (heroUrl ? '<div class="hero-preview"><img id="vitHeroPreview" src="' + esc(heroUrl) + '" alt=""/></div>' : '<div class="hero-preview empty" id="vitHeroPreviewWrap"><span>' + esc(v.heroUpload) + '</span></div>') +
       '<input type="file" accept="image/*,.jpg,.jpeg,.jfif,.png,.webp,.gif,.bmp,.tif,.tiff,.svg,.heic,.heif,.avif,.ico" id="vit_hero_file" onchange="Admin.uploadHeroBg(this)"/>' +
       '<p class="field-help">' + esc(v.heroFormats || 'Formats acceptes : JPG, JFIF, PNG, WebP, GIF, BMP, TIFF, SVG, HEIC, HEIF, AVIF, ICO — fichiers lourds acceptes (jusqu\'a 500 Mo). Vous pouvez aussi coller une URL ci-dessous.') + '</p>' +
       field('vit_hero_bg_url', v.heroUrl, heroUrl) +
+      vitrineGalleryBlock('hero_bg') +
       '</div>' +
       '<div class="fgrid">' +
       colorField('vit_color_main', v.colorMain, colors.main || '#1A1A1A', {
@@ -1273,6 +1289,7 @@
         toast(err, 'e');
         return;
       }
+      syncVitrineFormToState();
       if (!state.storefront) state.storefront = {};
       state.storefront.heroBgUrl = res.url;
       var urlEl = $('vit_hero_bg_url');
@@ -1316,6 +1333,7 @@
         toast(err, 'e');
         return;
       }
+      syncVitrineFormToState();
       if (!state.storefront) state.storefront = { content: {} };
       state.storefront.logoUrl = res.url;
       var urlEl = $('vit_logo_url');
@@ -1326,6 +1344,94 @@
       toast(apiErrMsg(e), 'e');
     }
     if (input) input.value = '';
+  }
+
+  function vitrineGalleryBlock(purpose) {
+    var v = t().vit || {};
+    var open = state.vitrineGalleryOpen === purpose;
+    var html = '<div class="field" style="margin-top:6px">' +
+      '<button type="button" class="btn-ghost" onclick="Admin.toggleVitrineGallery(\'' + purpose + '\')">' +
+      esc(open ? (v.driveGalleryClose || 'Fechar galeria') : ('🖼 ' + (v.driveGallery || 'Galeria Drive'))) + '</button>';
+    if (open) {
+      if (state.vitrineGalleryLoading) {
+        html += '<p class="field-help">' + esc(t().loading || 'A carregar…') + '</p>';
+      } else if (!state.vitrineGalleryImages || !state.vitrineGalleryImages.length) {
+        html += '<p class="field-help">' + esc(v.driveGalleryEmpty || 'Nenhuma imagem encontrada no Drive.') + '</p>';
+      } else {
+        html += '<p class="field-help">' + esc(v.driveGalleryHelp || 'Clique numa imagem para a usar — o URL é guardado automaticamente.') + '</p>' +
+          '<div class="drive-gallery" style="margin-top:8px">' +
+          state.vitrineGalleryImages.map(function (img, idx) {
+            return '<button type="button" class="drive-thumb" title="' + esc(img.name || '') + '" onclick="Admin.pickVitrineImage(\'' + purpose + '\',' + idx + ')">' +
+              '<img src="' + esc(img.thumbnailUrl || img.url) + '" alt="" loading="lazy"/>' +
+              '<span class="drive-thumb-meta">' + esc(img.name || '') + '</span></button>';
+          }).join('') + '</div>';
+      }
+    }
+    html += '</div>';
+    return html;
+  }
+
+  function syncVitrineFormToState() {
+    try {
+      if ($('vit_store_name')) {
+        syncStorefrontDraft();
+        collectVitrineLangFields();
+      }
+    } catch (e) { /* formulaire absent */ }
+  }
+
+  async function toggleVitrineGallery(purpose) {
+    syncVitrineFormToState();
+    if (state.vitrineGalleryOpen === purpose) {
+      state.vitrineGalleryOpen = '';
+      renderMain();
+      return;
+    }
+    state.vitrineGalleryOpen = purpose;
+    if (!state.vitrineGalleryImages || !state.vitrineGalleryImages.length) {
+      state.vitrineGalleryLoading = true;
+      renderMain();
+      try {
+        var res = await erpCall('listProductImages', { limit: 120 });
+        state.vitrineGalleryImages = (res && res.success && res.images) ? res.images : [];
+        if (res && !res.success) toast(res.error || t().error, 'e');
+      } catch (e) {
+        state.vitrineGalleryImages = [];
+        toast(apiErrMsg(e), 'e');
+      }
+      state.vitrineGalleryLoading = false;
+    }
+    renderMain();
+  }
+
+  async function pickVitrineImage(purpose, idx) {
+    var img = (state.vitrineGalleryImages || [])[idx];
+    if (!img || !img.url) return;
+    syncVitrineFormToState();
+    if (!state.storefront) state.storefront = { content: {} };
+    var configKey = storefrontConfigKeyForPurpose(purpose);
+    var elId;
+    if (purpose === 'logo') {
+      state.storefront.logoUrl = img.url;
+      elId = 'vit_logo_url';
+    } else {
+      state.storefront.heroBgUrl = img.url;
+      elId = 'vit_hero_bg_url';
+    }
+    var el = $(elId);
+    if (el) el.value = img.url;
+    state.vitrineGalleryOpen = '';
+    renderMain();
+    if (!configKey) return;
+    try {
+      var patch = {};
+      patch[configKey] = img.url;
+      var res = await erpCall('updateConfig', patch);
+      if (res && res.success) toast(t().saved, 's');
+      else toast((res && res.error) || t().error, 'e');
+    } catch (e) {
+      toast(apiErrMsg(e), 'e');
+    }
   }
 
   function syncStorefrontDraft() {
@@ -1940,6 +2046,8 @@
     saveStorefront: saveStorefront,
     uploadHeroBg: uploadHeroBg,
     uploadStoreLogo: uploadStoreLogo,
+    toggleVitrineGallery: toggleVitrineGallery,
+    pickVitrineImage: pickVitrineImage,
     syncColorField: syncColorField,
     editAdminUser: editAdminUser,
     saveAdminUser: saveAdminUser,
