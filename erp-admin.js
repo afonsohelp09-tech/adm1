@@ -617,13 +617,31 @@
     if (res && res.success) state.dashboard = res;
   }
 
+  var loadProductsSeq = 0;
+
   async function loadProducts() {
+    var seq = ++loadProductsSeq;
     var filters = { page: 1, pageSize: 500 };
-    if (state.productFilter === 'trash') filters.onlyTrash = true;
-    else filters.excludeTrash = true;
+    if (state.productFilter === 'trash') {
+      filters.onlyTrash = true;
+      filters.trashOnly = true;
+    } else {
+      filters.excludeTrash = true;
+    }
     if (state.productSearch) filters.search = state.productSearch;
     var res = await erpCall('getProducts', filters);
-    state.products = (res && res.success && res.products) ? res.products : [];
+    if (seq !== loadProductsSeq) return;
+    var rows = (res && res.success && res.products) ? res.products : [];
+    if (state.productFilter === 'trash') {
+      rows = rows.filter(function (p) {
+        return String((p && p.status) || '').toLowerCase().trim() === 'lixeira';
+      });
+    } else {
+      rows = rows.filter(function (p) {
+        return String((p && p.status) || '').toLowerCase().trim() !== 'lixeira';
+      });
+    }
+    state.products = rows;
   }
 
   async function loadCategories() {
