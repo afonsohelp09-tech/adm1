@@ -32,6 +32,8 @@
     { id: 'violet', hex: '#8B5CF6', fr: 'Violet', pt: 'Roxo', en: 'Violet', es: 'Violeta' }
   ];
 
+  var MAX_GALLERY = 12;
+
   var wiz = {
     editId: null,
     nome: '',
@@ -48,6 +50,7 @@
     imageBase64: null,
     imageMime: null,
     imageFileName: '',
+    galleryImages: [],
     selectedSizes: {},
     selectedColors: {},
     driveImages: [],
@@ -132,6 +135,7 @@
     wiz.imageBase64 = null;
     wiz.imageMime = null;
     wiz.imageFileName = '';
+    wiz.galleryImages = [];
     wiz.selectedSizes = { M: true };
     wiz.selectedColors = {};
     wiz.driveImages = [];
@@ -149,6 +153,21 @@
     wiz.prazo = pr.prazo_entrega_dias != null ? String(pr.prazo_entrega_dias) : '3';
     wiz.imageUrl = pr.imagem || '';
     wiz.imagePreview = pr.imagem || '';
+    wiz.galleryImages = (pr.imagens || []).map(function (img) {
+      return {
+        url: img.url || '',
+        preview: img.thumb_md || img.thumbMd || img.url || '',
+        fileId: img.drive_file_id || img.driveFileId || ''
+      };
+    });
+    if (!wiz.galleryImages.length && pr.imagem) {
+      wiz.galleryImages = [{
+        url: pr.imagem,
+        preview: pr.imagem_thumb_md || pr.imagem || '',
+        fileId: pr.drive_file_id || ''
+      }];
+    }
+    syncPrimaryFromGallery();
     wiz.selectedSizes = {};
     wiz.selectedColors = {};
     var vars = pr.variantes || [];
@@ -185,6 +204,108 @@
       });
     });
     return out;
+  }
+
+  function syncPrimaryFromGallery() {
+    var first = wiz.galleryImages[0];
+    if (first) {
+      wiz.imageUrl = first.url || '';
+      wiz.imagePreview = first.preview || first.url || '';
+      if (first.url) {
+        wiz.imageBase64 = null;
+        wiz.imageMime = null;
+        wiz.imageFileName = '';
+      }
+    } else {
+      wiz.imageUrl = '';
+      wiz.imagePreview = '';
+      wiz.imageBase64 = null;
+      wiz.imageMime = null;
+      wiz.imageFileName = '';
+    }
+  }
+
+  function galleryHasPending() {
+    return wiz.galleryImages.some(function (g) { return !!(g.base64 && g.mime); });
+  }
+
+  function galleryIsValid() {
+    return wiz.galleryImages.length > 0 && wiz.galleryImages.some(function (g) {
+      return !!(g.url || (g.base64 && g.mime) || g.preview);
+    });
+  }
+
+  function addGalleryItem(item) {
+    if (wiz.galleryImages.length >= MAX_GALLERY) {
+      toast((w().galleryMax || 'Maximum') + ' ' + MAX_GALLERY, 'e');
+      return false;
+    }
+    var url = String((item && item.url) || '').trim();
+    if (url && wiz.galleryImages.some(function (g) { return g.url === url; })) return false;
+    wiz.galleryImages.push({
+      url: url,
+      preview: (item && (item.preview || item.thumbnailUrl || item.url)) || '',
+      base64: item && item.base64 || null,
+      mime: item && item.mime || null,
+      fileName: item && item.fileName || '',
+      fileId: item && (item.fileId || item.drive_file_id) || ''
+    });
+    syncPrimaryFromGallery();
+    renderProductGallery();
+    updatePreview();
+    return true;
+  }
+
+  function removeGalleryImage(idx) {
+    var i = parseInt(idx, 10);
+    if (isNaN(i) || i < 0 || i >= wiz.galleryImages.length) return;
+    wiz.galleryImages.splice(i, 1);
+    syncPrimaryFromGallery();
+    renderProductGallery();
+    updatePreview();
+  }
+
+  function moveGalleryImage(idx, delta) {
+    var i = parseInt(idx, 10);
+    var j = i + (parseInt(delta, 10) || 0);
+    if (i < 0 || i >= wiz.galleryImages.length || j < 0 || j >= wiz.galleryImages.length) return;
+    var tmp = wiz.galleryImages[i];
+    wiz.galleryImages[i] = wiz.galleryImages[j];
+    wiz.galleryImages[j] = tmp;
+    syncPrimaryFromGallery();
+    renderProductGallery();
+    updatePreview();
+  }
+
+  function addGalleryUrlFromInput() {
+    var el = document.getElementById('pw_img_url');
+    var url = el ? String(el.value || '').trim() : '';
+    if (!url) return;
+    if (addGalleryItem({ url: url, preview: url })) {
+      if (el) el.value = '';
+    }
+  }
+
+  function renderProductGallery() {
+    var el = document.getElementById('pw_product_gallery');
+    if (!el) return;
+    var ww = w();
+    if (!wiz.galleryImages.length) {
+      el.innerHTML = '<p class="muted">' + esc(ww.galleryEmpty || 'Aucune photo — ajoutez au moins une image.') + '</p>';
+      return;
+    }
+    el.innerHTML = wiz.galleryImages.map(function (g, idx) {
+      var src = g.preview || g.url || '';
+      var mainBadge = idx === 0 ? '<span class="pw-g-main">' + esc(ww.galleryMain || 'Principale') + '</span>' : '';
+      return '<div class="pw-g-item' + (idx === 0 ? ' is-main' : '') + '">' +
+        mainBadge +
+        '<img src="' + esc(src) + '" alt=""/>' +
+        '<div class="pw-g-actions">' +
+        (idx > 0 ? '<button type="button" class="btn-sm" onclick="ProductWizard.moveGallery(' + idx + ',-1)" title="' + esc(ww.galleryLeft || '←') + '">←</button>' : '') +
+        (idx < wiz.galleryImages.length - 1 ? '<button type="button" class="btn-sm" onclick="ProductWizard.moveGallery(' + idx + ',1)" title="' + esc(ww.galleryRight || '→') + '">→</button>' : '') +
+        '<button type="button" class="btn-sm btn-danger-sm" onclick="ProductWizard.removeGallery(' + idx + ')" title="' + esc(ww.galleryRemove || 'Retirer') + '">×</button>' +
+        '</div></div>';
+    }).join('');
   }
 
   function renderSizeBadges() {
@@ -242,10 +363,11 @@
       btn.onclick = function () {
         var img = wiz.driveImages[parseInt(btn.getAttribute('data-idx'), 10)];
         if (!img) return;
-        wiz.imageUrl = img.url || img.thumbnailUrl || '';
-        wiz.imagePreview = img.thumbnailUrl || img.url || '';
-        wiz.imageBase64 = null;
-        wiz.imageMime = null;
+        addGalleryItem({
+          url: img.url || img.thumbnailUrl || '',
+          preview: img.thumbnailUrl || img.url || '',
+          fileId: img.fileId || ''
+        });
         if (img.nome_sugerido && !wiz.nome) {
           wiz.nome = img.nome_sugerido;
           var nomeEl = document.getElementById('pw_nome');
@@ -260,6 +382,20 @@
         updatePreview();
       };
     });
+  }
+
+  function bindGalleryUrlField() {
+    var urlEl = document.getElementById('pw_img_url');
+    if (urlEl) {
+      urlEl.onkeydown = function (e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          addGalleryUrlFromInput();
+        }
+      };
+    }
+    var addBtn = document.getElementById('pw_add_url_btn');
+    if (addBtn) addBtn.onclick = function () { addGalleryUrlFromInput(); };
   }
 
   function toDatetimeLocalValue(iso) {
@@ -446,13 +582,21 @@
         toast(w().imgTypeError || 'Image invalide', 'e');
         return;
       }
-      wiz.imagePreview = pack.preview;
-      wiz.imageBase64 = pack.base64;
-      wiz.imageMime = pack.mime;
-      wiz.imageFileName = pack.fileName;
-      wiz.imageUrl = '';
-      updatePreview();
+      addGalleryItem({
+        preview: pack.preview,
+        base64: pack.base64,
+        mime: pack.mime,
+        fileName: pack.fileName
+      });
     });
+  }
+
+  function handleImageFiles(fileList) {
+    if (!fileList || !fileList.length) return;
+    for (var i = 0; i < fileList.length; i++) {
+      if (wiz.galleryImages.length >= MAX_GALLERY) break;
+      handleImageFile(fileList[i]);
+    }
   }
 
   function bindUploadZone() {
@@ -460,30 +604,20 @@
     var input = document.getElementById('pw_file_input');
     if (!zone || !input) return;
     zone.onclick = function (e) {
-      if (e.target.closest('#pw_clear_img')) return;
+      if (e.target.closest('.pw-upload-hint')) { /* allow click */ }
       input.click();
     };
     input.onchange = function (e) {
-      if (e.target.files && e.target.files[0]) handleImageFile(e.target.files[0]);
+      if (e.target.files && e.target.files.length) handleImageFiles(e.target.files);
+      input.value = '';
     };
     zone.ondragover = function (e) { e.preventDefault(); zone.classList.add('drag'); };
     zone.ondragleave = function () { zone.classList.remove('drag'); };
     zone.ondrop = function (e) {
       e.preventDefault();
       zone.classList.remove('drag');
-      if (e.dataTransfer.files && e.dataTransfer.files[0]) handleImageFile(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files && e.dataTransfer.files.length) handleImageFiles(e.dataTransfer.files);
     };
-    var clearBtn = document.getElementById('pw_clear_img');
-    if (clearBtn) {
-      clearBtn.onclick = function (e) {
-        e.stopPropagation();
-        wiz.imageUrl = '';
-        wiz.imagePreview = '';
-        wiz.imageBase64 = null;
-        wiz.imageMime = null;
-        updatePreview();
-      };
-    }
   }
 
   function addCustomColor() {
@@ -513,20 +647,33 @@
     } catch (e) { /* ignore */ }
   }
 
-  async function uploadImageToDrive(produtoId, categoria) {
-    if (!wiz.imageBase64 || !wiz.imageMime) return wiz.imageUrl || '';
+  async function uploadGalleryItemToDrive(item, produtoId, categoria, index) {
+    if (!item.base64 || !item.mime) return item.url || '';
     var up = await deps.erpCall('uploadProductImage', {
-      base64: wiz.imageBase64,
-      mimeType: wiz.imageMime,
-      fileName: wiz.imageFileName || 'photo.jpg',
+      base64: item.base64,
+      mimeType: item.mime,
+      fileName: item.fileName || ('photo' + (index + 1) + '.jpg'),
       categoria: categoria,
       produto_id: produtoId
     });
     if (!up || !up.success) throw new Error((up && up.error) || w().uploadError || 'Upload échoué');
-    return {
-      url: up.url || up.thumbnailUrl || '',
-      fileId: up.fileId || up.drive_file_id || ''
-    };
+    return up.url || up.thumbnailUrl || '';
+  }
+
+  async function resolveGalleryUrls(produtoId, categoria) {
+    var urls = [];
+    for (var i = 0; i < wiz.galleryImages.length; i++) {
+      var g = wiz.galleryImages[i];
+      if (g.url) {
+        urls.push(g.url);
+        continue;
+      }
+      if (g.base64 && g.mime && produtoId) {
+        var uploaded = await uploadGalleryItemToDrive(g, produtoId, categoria, i);
+        if (uploaded) urls.push(uploaded);
+      }
+    }
+    return urls;
   }
 
   function wizardHtml(isEdit) {
@@ -539,18 +686,23 @@
       '<div class="wizard-form">' +
       '<section class="wizard-section">' +
       '<h3>' + esc(ww.imageSection || p.image) + '</h3>' +
-      '<div class="upload-zone" id="pw_upload_zone">' +
-      '<img id="pw_preview_img" class="upload-preview" alt="" style="display:none"/>' +
-      '<div class="upload-placeholder" id="pw_upload_hint">' +
+      '<p class="hint-block">' + esc(ww.galleryHint || 'Ajoutez plusieurs photos (face, dos, détail…). La 1ère = image principale.') + '</p>' +
+      '<div class="pw-product-gallery" id="pw_product_gallery"><p class="muted">' + esc(t().loading) + '</p></div>' +
+      '<div class="upload-zone pw-upload-add" id="pw_upload_zone">' +
+      '<div class="upload-placeholder pw-upload-hint">' +
       '<span class="upload-ico">☁</span>' +
       '<span>' + esc(ww.clickUpload || 'Cliquez pour télécharger') + '</span>' +
-      '<span class="muted">' + esc(ww.dragDrop || 'ou glissez une image') + '</span>' +
+      '<span class="muted">' + esc(ww.dragDrop || 'ou glissez des images') + '</span>' +
+      '<span class="muted">' + esc(ww.galleryMaxHint || ('Max ' + MAX_GALLERY + ' photos')) + '</span>' +
       '</div>' +
-      '<input type="file" id="pw_file_input" accept="image/*" class="sr-only"/>' +
-      '<button type="button" class="btn-sm upload-clear" id="pw_clear_img">' + esc(ww.clearImage || 'Retirer') + '</button>' +
+      '<input type="file" id="pw_file_input" accept="image/*" multiple class="sr-only"/>' +
       '</div>' +
-      '<div class="field"><label>' + esc(ww.orUrl || 'Ou URL image') + '</label>' +
-      '<input id="pw_img_url" value="' + esc(wiz.imageUrl) + '" oninput="ProductWizard.setImageUrl(this.value)"/></div>' +
+      '<div class="field pw-url-add">' +
+      '<label>' + esc(ww.orUrl || 'Ou URL image') + '</label>' +
+      '<div class="custom-color-row">' +
+      '<input id="pw_img_url" value="" placeholder="https://…"/>' +
+      '<button type="button" class="btn-sm" id="pw_add_url_btn">' + esc(ww.galleryAddUrl || t().add) + '</button>' +
+      '</div></div>' +
       '</section>' +
       '<section class="wizard-section">' +
       '<h3>' + esc(ww.infoSection || 'Informations') + '</h3>' +
@@ -618,8 +770,10 @@
     renderSizeBadges();
     renderColorSwatches();
     bindUploadZone();
+    bindGalleryUrlField();
     bindCatalogStatusField();
     syncFormFromState();
+    renderProductGallery();
     updatePreview();
     loadDriveImages();
   }
@@ -634,8 +788,8 @@
     var colors = Object.keys(wiz.selectedColors);
     if (!sizes.length) { toast(ww.sizeRequired || 'Sélectionnez au moins une taille', 'e'); return; }
     if (!colors.length) { toast(ww.colorRequired || 'Sélectionnez au moins une couleur', 'e'); return; }
-    if (!wiz.imageUrl && !wiz.imageBase64 && !wiz.imagePreview) {
-      toast(ww.imgRequired || 'Ajoutez une image', 'e');
+    if (!galleryIsValid()) {
+      toast(ww.imgRequired || 'Ajoutez au moins une image', 'e');
       return;
     }
     if (wiz.catalogo_status === 'agendado' && !wiz.publicar_em) {
@@ -646,46 +800,62 @@
     var saveBtn = document.getElementById('pw_save_btn');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = t().loading; }
     try {
-      var imageUrl = wiz.imageUrl || '';
+      var prodId = wiz.editId;
+      var initialUrl = '';
+      for (var gi = 0; gi < wiz.galleryImages.length; gi++) {
+        var gu = String(wiz.galleryImages[gi].url || '').trim();
+        if (gu && /^https?:\/\//i.test(gu)) { initialUrl = gu; break; }
+      }
+      if (!initialUrl) initialUrl = wiz.imageUrl && /^https?:\/\//i.test(wiz.imageUrl) ? wiz.imageUrl : '';
       var payload = {
         nome: wiz.nome,
         descricao: wiz.descricao,
         categoria: wiz.categoria,
         preco_ht: parseFloat(wiz.preco_ht) || 0,
         tva: parseFloat(wiz.tva) || 23,
-        imagem: imageUrl,
+        imagem: initialUrl,
         catalogo_status: wiz.catalogo_status,
         publicar_em: wiz.catalogo_status === 'agendado' ? wiz.publicar_em : '',
         gerir_stock: '1',
         prazo_entrega_dias: parseInt(wiz.prazo, 10) || 3,
-        variantes: buildVariants(imageUrl),
+        variantes: buildVariants(initialUrl),
         replace_variants: true
       };
       var res;
-      var prodId = wiz.editId;
       if (prodId) {
         payload.produto_id = prodId;
+        var urlsEdit = await resolveGalleryUrls(prodId, wiz.categoria);
+        if (!urlsEdit.length) {
+          toast(ww.imgRequired || 'Ajoutez au moins une image', 'e');
+          return;
+        }
+        payload.imagem = urlsEdit[0];
+        payload.imagens = urlsEdit.map(function (u, i) { return { url: u, ordem: i }; });
+        payload.variantes = buildVariants(urlsEdit[0]);
         res = await deps.erpCall('updateProduct', payload);
       } else {
         res = await deps.erpCall('createProduct', payload);
         if (res && res.success) prodId = res.id || res.produto_id;
+        if (!prodId) {
+          toast((res && res.error) || t().error, 'e');
+          return;
+        }
+        var urlsNew = await resolveGalleryUrls(prodId, wiz.categoria);
+        if (!urlsNew.length) {
+          toast(ww.imgRequired || 'Ajoutez au moins une image', 'e');
+          return;
+        }
+        res = await deps.erpCall('updateProduct', {
+          produto_id: prodId,
+          imagem: urlsNew[0],
+          imagens: urlsNew.map(function (u, i) { return { url: u, ordem: i }; }),
+          variantes: buildVariants(urlsNew[0]),
+          replace_variants: true
+        });
       }
       if (!res || !res.success) {
         toast((res && res.error) || t().error, 'e');
         return;
-      }
-      if (wiz.imageBase64 && prodId) {
-        var uploaded = await uploadImageToDrive(prodId, wiz.categoria);
-        if (uploaded && uploaded.url) {
-          var variants = buildVariants(uploaded.url);
-          await deps.erpCall('updateProduct', {
-            produto_id: prodId,
-            imagem: uploaded.url,
-            drive_file_id: uploaded.fileId || '',
-            variantes: variants,
-            replace_variants: true
-          });
-        }
       }
       deps.closeModal();
       toast(t().saved, 's');
@@ -712,11 +882,8 @@
   }
 
   function setImageUrl(url) {
-    wiz.imageUrl = String(url || '').trim();
-    if (wiz.imageUrl && !wiz.imageBase64) {
-      wiz.imagePreview = wiz.imageUrl;
-    }
-    updatePreview();
+    var u = String(url || '').trim();
+    if (u) addGalleryItem({ url: u, preview: u });
   }
 
   function install(api) {
@@ -730,6 +897,8 @@
     updatePreview: updatePreview,
     addCustomColor: addCustomColor,
     setImageUrl: setImageUrl,
+    removeGallery: removeGalleryImage,
+    moveGallery: moveGalleryImage,
     syncDrive: syncDriveFolders
   };
 })(typeof window !== 'undefined' ? window : this);

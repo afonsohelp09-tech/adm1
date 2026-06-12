@@ -155,6 +155,14 @@
     return !!(state.user && String(state.user.role || 'admin').toLowerCase() === 'admin');
   }
 
+  /* Vues accessibles au rôle « staff » ; les administrateurs ont tout. */
+  var STAFF_ALLOWED_VIEWS = ['dashboard', 'products', 'orders', 'categories', 'clients', 'coupons'];
+
+  function canAccessView(view) {
+    if (isAdminUser()) return true;
+    return STAFF_ALLOWED_VIEWS.indexOf(String(view || '')) >= 0;
+  }
+
   function fileToBase64(file) {
     return new Promise(function (resolve, reject) {
       var r = new FileReader();
@@ -454,6 +462,10 @@
   }
 
   function setView(v) {
+    if (!canAccessView(v)) {
+      toast((t().team && t().team.adminOnly) || 'Apenas administradores.', 'e');
+      return;
+    }
     state.view = v;
     state.sidebarOpen = false;
     state.selectedProduct = null;
@@ -751,11 +763,30 @@
       heroBgUrl: res.heroBgUrl || st.vitrine_hero_bg_url || '',
       tagline: res.tagline || st.boutique_footer_tagline || '',
       colors: res.colors || { main: st.color_main || '#1a1a1a', accent: st.color_accent || '#c9a96e' },
+      heroTextColors: {
+        eyebrow: String(st.vitrine_hero_eyebrow_color || '').trim(),
+        title: String(st.vitrine_hero_title_color || '').trim(),
+        sub: String(st.vitrine_hero_sub_color || '').trim()
+      },
       defaultLang: res.defaultLang || st.boutique_default_lang || 'pt',
       content: content,
       social: social,
       promoOn: st.promo_banner_enabled,
-      promoText: st.promo_banner_text || ''
+      promoText: st.promo_banner_text || '',
+      announcement: {
+        enabled: st.announcement_enabled,
+        marquee: st.announcement_marquee == null || st.announcement_marquee === '' ? '1' : st.announcement_marquee,
+        text: st.announcement_text || '',
+        label: st.announcement_promo_label || '',
+        code: st.announcement_promo_code || '',
+        pct: st.announcement_promo_pct || '',
+        pct2: st.announcement_promo_pct_2 || '',
+        amount: st.announcement_promo_amount_eur || '',
+        minCart: st.announcement_promo_min_cart_eur || '',
+        validUntil: st.announcement_promo_valid_until || '',
+        dateStart: st.announcement_date_start || '',
+        dateEnd: st.announcement_date_end || ''
+      }
     };
     if (!state.vitrineEditLang) state.vitrineEditLang = state.storefront.defaultLang || 'pt';
   }
@@ -792,7 +823,7 @@
       { id: 'coupons', label: (n.promotions || n.coupons) }
     ];
     if (isAdminUser()) items.splice(items.length - 1, 0, { id: 'team', label: n.team });
-    return items;
+    return items.filter(function (it) { return canAccessView(it.id); });
   }
 
   function viewTitle() {
@@ -905,6 +936,10 @@
     if (title) title.textContent = viewTitle();
     if (state.loading) {
       main.innerHTML = '<p class="loading-msg">' + esc(t().loading) + '</p>';
+      return;
+    }
+    if (!canAccessView(state.view)) {
+      main.innerHTML = '<p class="api-warn">' + esc((t().team && t().team.adminOnly) || 'Apenas administradores.') + '</p>';
       return;
     }
     if (state.view === 'dashboard') main.innerHTML = renderDashboard();
@@ -1040,6 +1075,21 @@
       check('cfg_show_stripe', c.showStripe, cfgVal('pay_show_stripe', '1')) +
       check('cfg_show_cod', c.showCod, cfgVal('pay_show_cod', '1')) +
       check('cfg_show_transfer', c.showTransfer, cfgVal('pay_show_transfer', '1')) +
+      field('cfg_transfer_iban', c.transferIban || 'IBAN (transferência bancária)', cfgVal('transfer_iban', ''), {
+        placeholder: 'PT50 0000 0000 0000 0000 0000 0',
+        help: c.transferIbanHelp || 'Mostrado ao cliente após uma encomenda paga por transferência.'
+      }) +
+      check('cfg_show_mbway', c.showMbway || 'Mostrar MB Way', cfgVal('pay_show_mbway', '0')) +
+      field('cfg_mbway_phone', c.mbwayPhone || 'Número MB Way', cfgVal('pay_mbway_phone', ''), {
+        placeholder: '+351 912 345 678',
+        help: c.mbwayPhoneHelp || 'Obrigatório para a opção MB Way aparecer no checkout.'
+      }) +
+      check('cfg_show_paypal', c.showPaypal || 'Mostrar PayPal', cfgVal('pay_show_paypal', '0')) +
+      field('cfg_paypal_me', c.paypalMe || 'Ligação PayPal.Me', cfgVal('pay_paypal_me', ''), {
+        placeholder: 'paypal.me/asualoja',
+        help: c.paypalMeHelp || 'Obrigatório para a opção PayPal aparecer no checkout (ligação PayPal.Me).'
+      }) +
+      check('cfg_guest_checkout', c.guestCheckout || 'Permitir compra sem conta (convidado)', cfgVal('guest_checkout_enabled', '1')) +
       '</section>' +
       '<section class="panel"><h2>' + esc(c.promo) + '</h2>' +
       check('cfg_promo_on', c.promoOn, cfgVal('promo_banner_enabled', '0')) +
@@ -1070,6 +1120,25 @@
       '<input type="color" class="color-picker" id="picker_' + id + '" value="' + esc(hex) + '" oninput="Admin.syncColorField(\'' + id + '\', this.value)"/>' +
       '<input id="' + id + '" value="' + esc(hex) + '" placeholder="' + esc(hex) + '" oninput="Admin.syncColorField(\'' + id + '\', this.value, true)" onchange="Admin.syncColorField(\'' + id + '\', this.value, true)"/>' +
       '</div>' + help + '</div>';
+  }
+
+  function optionalColorField(id, label, val, opts) {
+    opts = opts || {};
+    var hex = isHexColorValue(val) ? normalizeHexColor(val, opts.fallback || '#FFFFFF') : '';
+    var pickerVal = hex || normalizeHexColor(opts.fallback || '#FFFFFF', '#FFFFFF');
+    var help = opts.help ? '<p class="field-help">' + esc(opts.help) + '</p>' : '';
+    return '<div class="field"><label>' + esc(label) + '</label>' +
+      '<div class="color-field">' +
+      '<input type="color" class="color-picker" id="picker_' + id + '" value="' + esc(pickerVal) + '" oninput="Admin.syncColorField(\'' + id + '\', this.value)"/>' +
+      '<input id="' + id + '" value="' + esc(hex) + '" placeholder="' + esc(opts.placeholder || 'auto') + '" oninput="Admin.syncColorField(\'' + id + '\', this.value, true)" onchange="Admin.syncColorField(\'' + id + '\', this.value, true)"/>' +
+      '<button type="button" class="btn-ghost" title="' + esc(opts.resetLabel || 'Reset') + '" onclick="Admin.clearColorField(\'' + id + '\')">✕</button>' +
+      '</div>' + help + '</div>';
+  }
+
+  function clearColorField(id) {
+    var input = $(id);
+    if (input) input.value = '';
+    scheduleStorefrontAutosave();
   }
 
   function syncColorField(id, value, fromText) {
@@ -1136,6 +1205,8 @@
     var v = t().vit || {};
     var sf = state.storefront || {};
     var colors = sf.colors || {};
+    var heroTextColors = sf.heroTextColors || {};
+    var ann = sf.announcement || {};
     var social = sf.social || {};
     var logoUrl = sf.logoUrl || '';
     var heroUrl = sf.heroBgUrl || '';
@@ -1170,6 +1241,24 @@
         help: v.colorHelp || 'Cliquez sur la pastille pour choisir une couleur, ou saisissez un code hex (#C9A96E).'
       }) +
       '</div>' +
+      '<div class="fgrid">' +
+      optionalColorField('vit_hero_eye_color', v.heroEyeColor || 'Cor do texto — faixa (eyebrow)', heroTextColors.eyebrow || '', {
+        fallback: '#C9A96E',
+        placeholder: v.colorAuto || 'Automático',
+        resetLabel: v.colorReset || 'Repor automático',
+        help: v.heroTextColorHelp || 'Deixe vazio para usar a cor automática do tema.'
+      }) +
+      optionalColorField('vit_hero_title_color', v.heroTitleColor || 'Cor do texto — título', heroTextColors.title || '', {
+        fallback: '#FFFFFF',
+        placeholder: v.colorAuto || 'Automático',
+        resetLabel: v.colorReset || 'Repor automático'
+      }) +
+      optionalColorField('vit_hero_sub_color', v.heroSubColor || 'Cor do texto — subtítulo', heroTextColors.sub || '', {
+        fallback: '#EDEAE4',
+        placeholder: v.colorAuto || 'Automático',
+        resetLabel: v.colorReset || 'Repor automático'
+      }) +
+      '</div>' +
       field('vit_def_lang', v.defLang, sf.defaultLang || 'pt') +
       '</section>' +
       '<section class="panel"><h2>' + esc(v.texts) + '</h2>' +
@@ -1192,6 +1281,31 @@
         placeholder: vitrineExampleSet(state.vitrineEditLang || 'pt').promoText,
         help: vitrineExampleHelp(vitrineExampleSet(state.vitrineEditLang || 'pt').promoText)
       }) +
+      '<h2 style="margin-top:18px">' + esc(v.annTitle || 'Campanha / Anúncio (avançado)') + '</h2>' +
+      '<p class="hint-block">' + esc(v.annHint || 'Campanha com datas e variáveis. Se ativa, tem prioridade sobre a faixa promocional acima.') + '</p>' +
+      check('vit_ann_on', v.annOn || 'Ativar campanha', ann.enabled) +
+      check('vit_ann_marquee', v.annMarquee || 'Texto deslizante (marquee)', ann.marquee) +
+      field('vit_ann_text', v.annText || 'Texto do anúncio', ann.text || '', {
+        placeholder: '✦ {{promo_label}} · -{{pct}}% COM O CÓDIGO {{code}} ATÉ {{valid_until}} ✦',
+        help: v.annTextHelp || 'Variáveis disponíveis: {{pct}}, {{pct2}}, {{code}}, {{amount}}, {{min_cart}}, {{valid_until}}, {{promo_label}}.'
+      }) +
+      '<div class="fgrid">' +
+      field('vit_ann_label', v.annLabel || 'Título da campanha ({{promo_label}})', ann.label || '', { placeholder: 'BLACK FRIDAY' }) +
+      field('vit_ann_code', v.annCode || 'Código promo ({{code}})', ann.code || '', { placeholder: 'BEMVINDO10' }) +
+      '</div>' +
+      '<div class="fgrid">' +
+      field('vit_ann_pct', v.annPct || 'Desconto % ({{pct}})', ann.pct || '', { placeholder: '10' }) +
+      field('vit_ann_pct2', v.annPct2 || '2.º desconto % ({{pct2}})', ann.pct2 || '', { placeholder: '20' }) +
+      '</div>' +
+      '<div class="fgrid">' +
+      field('vit_ann_amount', v.annAmount || 'Remise fixa € ({{amount}})', ann.amount || '', { placeholder: '15' }) +
+      field('vit_ann_min_cart', v.annMinCart || 'Carrinho mínimo € ({{min_cart}})', ann.minCart || '', { placeholder: '150' }) +
+      '</div>' +
+      '<div class="fgrid">' +
+      field('vit_ann_start', v.annStart || 'Início (AAAA-MM-DD)', ann.dateStart || '', { placeholder: '2026-06-01' }) +
+      field('vit_ann_end', v.annEnd || 'Fim (AAAA-MM-DD)', ann.dateEnd || '', { placeholder: '2026-06-30' }) +
+      '</div>' +
+      field('vit_ann_valid_until', v.annValidUntil || 'Validade exibida ({{valid_until}})', ann.validUntil || '', { placeholder: '30/06' }) +
       '</section>' +
       '<p class="field-help">' + esc(v.autoSaveHint || 'Les modifications sont enregistrées automatiquement après un court instant et au rafraîchissement de la page.') + '</p>' +
       '<button type="submit" class="btn-primary wide">' + esc(t().save) + '</button></form>';
@@ -1443,6 +1557,17 @@
       main: normalizeHexColor(val('vit_color_main'), '#1A1A1A'),
       accent: normalizeHexColor(val('vit_color_accent'), '#C9A96E')
     };
+    function optionalHex(id) {
+      var raw = String(val(id) || '').trim();
+      if (!raw) return '';
+      if (raw.charAt(0) !== '#') raw = '#' + raw;
+      return isHexColorValue(raw) ? raw.toUpperCase() : '';
+    }
+    state.storefront.heroTextColors = {
+      eyebrow: optionalHex('vit_hero_eye_color'),
+      title: optionalHex('vit_hero_title_color'),
+      sub: optionalHex('vit_hero_sub_color')
+    };
     state.storefront.defaultLang = val('vit_def_lang').trim() || 'pt';
     state.storefront.social = {
       instagram: val('vit_social_insta').trim(),
@@ -1452,6 +1577,20 @@
     };
     state.storefront.promoOn = chk('vit_promo_on');
     state.storefront.promoText = val('vit_promo_text').trim();
+    state.storefront.announcement = {
+      enabled: chk('vit_ann_on'),
+      marquee: chk('vit_ann_marquee'),
+      text: val('vit_ann_text').trim(),
+      label: val('vit_ann_label').trim(),
+      code: val('vit_ann_code').trim(),
+      pct: val('vit_ann_pct').trim(),
+      pct2: val('vit_ann_pct2').trim(),
+      amount: val('vit_ann_amount').trim(),
+      minCart: val('vit_ann_min_cart').trim(),
+      validUntil: val('vit_ann_valid_until').trim(),
+      dateStart: val('vit_ann_start').trim(),
+      dateEnd: val('vit_ann_end').trim()
+    };
     return state.storefront;
   }
 
@@ -1484,6 +1623,9 @@
       color_main: (sf.colors && sf.colors.main) || '#1A1A1A',
       color_accent: (sf.colors && sf.colors.accent) || '#C9A96E',
       vitrine_hero_bg_url: sf.heroBgUrl || '',
+      vitrine_hero_eyebrow_color: (sf.heroTextColors && sf.heroTextColors.eyebrow) || '',
+      vitrine_hero_title_color: (sf.heroTextColors && sf.heroTextColors.title) || '',
+      vitrine_hero_sub_color: (sf.heroTextColors && sf.heroTextColors.sub) || '',
       boutique_default_lang: sf.defaultLang || 'pt',
       social_instagram: (sf.social && sf.social.instagram) || '',
       social_facebook: (sf.social && sf.social.facebook) || '',
@@ -1492,6 +1634,19 @@
       promo_banner_enabled: sf.promoOn || '0',
       promo_banner_text: sf.promoText || ''
     };
+    var ann = sf.announcement || {};
+    patch.announcement_enabled = ann.enabled || '0';
+    patch.announcement_marquee = ann.marquee || '0';
+    patch.announcement_text = ann.text || '';
+    patch.announcement_promo_label = ann.label || '';
+    patch.announcement_promo_code = ann.code || '';
+    patch.announcement_promo_pct = ann.pct || '';
+    patch.announcement_promo_pct_2 = ann.pct2 || '';
+    patch.announcement_promo_amount_eur = ann.amount || '';
+    patch.announcement_promo_min_cart_eur = ann.minCart || '';
+    patch.announcement_promo_valid_until = ann.validUntil || '';
+    patch.announcement_date_start = ann.dateStart || '';
+    patch.announcement_date_end = ann.dateEnd || '';
     ['pt', 'fr', 'en', 'es'].forEach(function (lg) {
       var block = (sf.content && sf.content[lg]) || {};
       patch['vitrine_hero_eyebrow_' + lg] = block.hEye || '';
@@ -1521,6 +1676,9 @@
       heroBgUrl: sf.heroBgUrl,
       color_main: sf.colors.main,
       color_accent: sf.colors.accent,
+      heroEyebrowColor: (sf.heroTextColors && sf.heroTextColors.eyebrow) || '',
+      heroTitleColor: (sf.heroTextColors && sf.heroTextColors.title) || '',
+      heroSubColor: (sf.heroTextColors && sf.heroTextColors.sub) || '',
       defaultLang: sf.defaultLang,
       social_instagram: sf.social.instagram,
       social_facebook: sf.social.facebook,
@@ -1528,6 +1686,18 @@
       social_tiktok: sf.social.tiktok,
       promo_banner_enabled: sf.promoOn,
       promo_banner_text: sf.promoText,
+      announcement_enabled: (sf.announcement && sf.announcement.enabled) || '0',
+      announcement_marquee: (sf.announcement && sf.announcement.marquee) || '0',
+      announcement_text: (sf.announcement && sf.announcement.text) || '',
+      announcement_promo_label: (sf.announcement && sf.announcement.label) || '',
+      announcement_promo_code: (sf.announcement && sf.announcement.code) || '',
+      announcement_promo_pct: (sf.announcement && sf.announcement.pct) || '',
+      announcement_promo_pct_2: (sf.announcement && sf.announcement.pct2) || '',
+      announcement_promo_amount_eur: (sf.announcement && sf.announcement.amount) || '',
+      announcement_promo_min_cart_eur: (sf.announcement && sf.announcement.minCart) || '',
+      announcement_promo_valid_until: (sf.announcement && sf.announcement.validUntil) || '',
+      announcement_date_start: (sf.announcement && sf.announcement.dateStart) || '',
+      announcement_date_end: (sf.announcement && sf.announcement.dateEnd) || '',
       content: sf.content
     };
     var res = await erpCall('updateStorefront', payload);
@@ -1582,22 +1752,71 @@
     }
   }
 
+  function isSelfAdminUser(u) {
+    if (!u || !state.user) return false;
+    if (u.user_id && state.user.user_id && String(u.user_id) === String(state.user.user_id)) return true;
+    var e1 = String(u.email || '').trim().toLowerCase();
+    var e2 = String(state.user.email || '').trim().toLowerCase();
+    return !!(e1 && e2 && e1 === e2);
+  }
+
+  function countActiveAdmins() {
+    return state.adminUsers.filter(function (x) {
+      return String(x.role || '').toLowerCase() === 'admin' && String(x.status || 'ativo').toLowerCase() === 'ativo';
+    }).length;
+  }
+
   function renderTeam() {
     var tm = t().team || {};
     if (!isAdminUser()) {
       return '<p class="api-warn">' + esc(tm.adminOnly) + '</p>';
     }
+    var navLabels = t().nav || {};
+    var staffViews = STAFF_ALLOWED_VIEWS.map(function (v) { return navLabels[v === 'coupons' ? 'promotions' : v] || navLabels[v] || v; }).join(', ');
     return '<p class="hint-block">' + esc(tm.subtitle) + '</p>' +
+      '<section class="panel"><h2>' + esc(tm.accessTitle || 'Acessos por função') + '</h2>' +
+      '<p class="field-help"><strong>' + esc(tm.roleAdmin || 'Administrador') + '</strong> — ' + esc(tm.accessAdmin || 'Acesso total: tudo + Conteúdo da vitrine, Configuração e Equipa admin.') + '</p>' +
+      '<p class="field-help"><strong>' + esc(tm.roleStaff || 'Pessoal') + '</strong> — ' + esc(tm.accessStaff || 'Acesso operacional:') + ' ' + esc(staffViews) + '</p>' +
+      '</section>' +
       '<div class="toolbar"><button type="button" class="btn-primary" onclick="Admin.editAdminUser(null)">' + esc(tm.newUser) + '</button></div>' +
-      '<div class="table-wrap"><table class="data-table"><thead><tr><th>' + esc(tm.name) + '</th><th>' + esc(tm.email) + '</th><th>' + esc(tm.role) + '</th><th>' + esc(tm.status) + '</th><th></th></tr></thead><tbody>' +
+      '<div class="table-wrap"><table class="data-table"><thead><tr><th>' + esc(tm.name) + '</th><th>' + esc(tm.email) + '</th><th>' + esc(tm.role) + '</th><th>' + esc(tm.status) + '</th><th>' + esc(tm.createdAt || 'Criado em') + '</th><th></th></tr></thead><tbody>' +
       (state.adminUsers.length ? state.adminUsers.map(function (u) {
         var uid = esc(u.user_id).replace(/'/g, "\\'");
         var roleLbl = u.role === 'admin' ? (tm.roleAdmin || 'admin') : (tm.roleStaff || 'staff');
-        var stLbl = String(u.status || '').toLowerCase() === 'ativo' ? (tm.statusActive || 'ativo') : (tm.statusInactive || 'inativo');
-        return '<tr><td>' + esc(u.nome) + '</td><td>' + esc(u.email) + '</td><td>' + esc(roleLbl) + '</td><td>' + esc(stLbl) + '</td>' +
-          '<td><button type="button" class="btn-sm" onclick="Admin.editAdminUser(\'' + uid + '\')">' + esc(t().edit) + '</button></td></tr>';
-      }).join('') : '<tr><td colspan="5" class="muted">' + esc(t().noData) + '</td></tr>') +
+        var active = String(u.status || 'ativo').toLowerCase() === 'ativo';
+        var stLbl = active ? (tm.statusActive || 'ativo') : (tm.statusInactive || 'inativo');
+        var self = isSelfAdminUser(u);
+        var toggleBtn = '';
+        if (!self) {
+          toggleBtn = ' <button type="button" class="btn-sm' + (active ? ' danger' : '') + '" onclick="Admin.toggleAdminUserStatus(\'' + uid + '\')">' +
+            esc(active ? (tm.deactivate || 'Desativar') : (tm.activate || 'Ativar')) + '</button>';
+        }
+        return '<tr><td>' + esc(u.nome) + (self ? ' <span class="muted">(' + esc(tm.you || 'você') + ')</span>' : '') + '</td>' +
+          '<td>' + esc(u.email) + '</td><td>' + esc(roleLbl) + '</td><td>' + esc(stLbl) + '</td>' +
+          '<td>' + esc(u.data_criacao || '—') + '</td>' +
+          '<td><button type="button" class="btn-sm" onclick="Admin.editAdminUser(\'' + uid + '\')">' + esc(t().edit) + '</button>' + toggleBtn + '</td></tr>';
+      }).join('') : '<tr><td colspan="6" class="muted">' + esc(t().noData) + '</td></tr>') +
       '</tbody></table></div>';
+  }
+
+  async function toggleAdminUserStatus(userId) {
+    var tm = t().team || {};
+    if (!isAdminUser()) { toast(tm.adminOnly, 'e'); return; }
+    var u = state.adminUsers.find(function (x) { return x.user_id === userId; });
+    if (!u) return;
+    if (isSelfAdminUser(u)) { toast(tm.cantSelf || 'Não pode desativar a sua própria conta.', 'e'); return; }
+    var active = String(u.status || 'ativo').toLowerCase() === 'ativo';
+    if (active && String(u.role || '').toLowerCase() === 'admin' && countActiveAdmins() <= 1) {
+      toast(tm.lastAdmin || 'Impossível desativar o último administrador ativo.', 'e');
+      return;
+    }
+    try {
+      var res = await erpCall('updateAdminUser', { user_id: userId, status: active ? 'inativo' : 'ativo' });
+      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
+      toast(t().saved, 's');
+      await loadAdminUsers();
+      renderMain();
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
   }
 
   function editAdminUser(userId) {
@@ -1606,18 +1825,25 @@
     var u = null;
     if (userId) u = state.adminUsers.find(function (x) { return x.user_id === userId; });
     var isNew = !u;
+    var self = u ? isSelfAdminUser(u) : false;
+    var emailField = isNew
+      ? field('au_email', tm.email, '')
+      : '<div class="field"><label>' + esc(tm.email) + '</label><input id="au_email" value="' + esc(u.email || '') + '" disabled/>' +
+        '<p class="field-help">' + esc(tm.emailLocked || 'O e-mail não pode ser alterado. Crie uma nova conta se necessário.') + '</p></div>';
     openModal(
       '<div class="modal-inner"><h2>' + esc(isNew ? tm.newUser : tm.editUser) + '</h2>' +
       '<input type="hidden" id="au_id" value="' + esc(u ? u.user_id : '') + '"/>' +
       field('au_nome', tm.name, u ? u.nome : '') +
-      field('au_email', tm.email, u ? u.email : '') +
-      field('au_pass', isNew ? tm.password : tm.newPassword, '') +
+      emailField +
+      field('au_pass', isNew ? tm.password : tm.newPassword, '', { help: tm.passwordHelp || 'Mínimo 6 caracteres.' }) +
       '<div class="field"><label>' + esc(tm.role) + '</label><select id="au_role">' +
       '<option value="staff"' + (!u || u.role !== 'admin' ? ' selected' : '') + '>' + esc(tm.roleStaff) + '</option>' +
-      '<option value="admin"' + (u && u.role === 'admin' ? ' selected' : '') + '>' + esc(tm.roleAdmin) + '</option></select></div>' +
-      '<div class="field"><label>' + esc(tm.status) + '</label><select id="au_status">' +
+      '<option value="admin"' + (u && u.role === 'admin' ? ' selected' : '') + '>' + esc(tm.roleAdmin) + '</option></select>' +
+      '<p class="field-help">' + esc(tm.roleHelp || 'Administrador: acesso total. Pessoal: sem Vitrine, Configuração nem Equipa admin.') + '</p></div>' +
+      '<div class="field"><label>' + esc(tm.status) + '</label><select id="au_status"' + (self ? ' disabled' : '') + '>' +
       '<option value="ativo"' + (!u || String(u.status).toLowerCase() === 'ativo' ? ' selected' : '') + '>' + esc(tm.statusActive) + '</option>' +
-      '<option value="inativo"' + (u && String(u.status).toLowerCase() === 'inativo' ? ' selected' : '') + '>' + esc(tm.statusInactive) + '</option></select></div>' +
+      '<option value="inativo"' + (u && String(u.status).toLowerCase() === 'inativo' ? ' selected' : '') + '>' + esc(tm.statusInactive) + '</option></select>' +
+      (self ? '<p class="field-help">' + esc(tm.cantSelf || 'Não pode desativar a sua própria conta.') + '</p>' : '') + '</div>' +
       '<div class="modal-actions"><button type="button" class="btn-ghost" onclick="Admin.closeModal()">' + esc(t().cancel) + '</button>' +
       '<button type="button" class="btn-primary" onclick="Admin.saveAdminUser()">' + esc(t().save) + '</button></div></div>'
     );
@@ -1634,14 +1860,36 @@
       role: val('au_role'),
       status: val('au_status')
     };
+    if (payload.password && String(payload.password).length < 6) {
+      toast(tm.passwordHelp || 'Mínimo 6 caracteres.', 'e');
+      return;
+    }
+    if (id) {
+      var current = state.adminUsers.find(function (x) { return x.user_id === id; });
+      var wasActiveAdmin = current && String(current.role || '').toLowerCase() === 'admin' && String(current.status || 'ativo').toLowerCase() === 'ativo';
+      var staysActiveAdmin = payload.role === 'admin' && payload.status === 'ativo';
+      if (wasActiveAdmin && !staysActiveAdmin && countActiveAdmins() <= 1) {
+        toast(tm.lastAdmin || 'Impossível desativar o último administrador ativo.', 'e');
+        return;
+      }
+      if (current && isSelfAdminUser(current) && payload.status === 'inativo') {
+        toast(tm.cantSelf || 'Não pode desativar a sua própria conta.', 'e');
+        return;
+      }
+    }
     try {
       var res;
       if (id) {
         payload.user_id = id;
+        delete payload.email;
         if (!payload.password) delete payload.password;
         res = await erpCall('updateAdminUser', payload);
       } else {
         if (!payload.email || !payload.password) { toast(tm.password, 'e'); return; }
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(payload.email).trim())) {
+          toast(tm.invalidEmail || 'E-mail inválido.', 'e');
+          return;
+        }
         res = await erpCall('createAdminUser', payload);
       }
       if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
@@ -1934,6 +2182,12 @@
       pay_show_stripe: chk('cfg_show_stripe'),
       pay_show_cod: chk('cfg_show_cod'),
       pay_show_transfer: chk('cfg_show_transfer'),
+      transfer_iban: val('cfg_transfer_iban'),
+      pay_show_mbway: chk('cfg_show_mbway'),
+      pay_mbway_phone: val('cfg_mbway_phone'),
+      pay_show_paypal: chk('cfg_show_paypal'),
+      pay_paypal_me: val('cfg_paypal_me'),
+      guest_checkout_enabled: chk('cfg_guest_checkout'),
       promo_banner_enabled: chk('cfg_promo_on'),
       promo_banner_text: val('cfg_promo_text'),
       store_email: val('cfg_store_email'),
@@ -2049,8 +2303,10 @@
     toggleVitrineGallery: toggleVitrineGallery,
     pickVitrineImage: pickVitrineImage,
     syncColorField: syncColorField,
+    clearColorField: clearColorField,
     editAdminUser: editAdminUser,
     saveAdminUser: saveAdminUser,
+    toggleAdminUserStatus: toggleAdminUserStatus,
     editCoupon: editCoupon,
     saveCoupon: saveCoupon,
     removeCoupon: removeCoupon,

@@ -52,6 +52,26 @@
     return rows;
   }
 
+  function productTabCounts() {
+    var rows = d.state.products || [];
+    var isTrash = d.state.productFilter === 'trash';
+    if (isTrash) return { all: 0, published: 0, scheduled: 0, draft: 0, trash: rows.length };
+    var c = { all: rows.length, published: 0, scheduled: 0, draft: 0, trash: null };
+    rows.forEach(function (p) {
+      var cs = normCat(p);
+      if (cs === 'publicado') c.published++;
+      else if (cs === 'agendado') c.scheduled++;
+      else if (cs === 'rascunho') c.draft++;
+    });
+    return c;
+  }
+
+  function tabLabel(key, lbl, counts) {
+    var n = counts && counts[key];
+    if (n == null || n === '') return lbl;
+    return lbl + ' (' + n + ')';
+  }
+
   function selectedIds() {
     var sel = d.state.productSelected || {};
     return Object.keys(sel).filter(function (k) { return sel[k]; });
@@ -61,6 +81,7 @@
     var p = t().prod;
     var rows = filteredProducts();
     var isTrash = d.state.productFilter === 'trash';
+    var counts = productTabCounts();
     var selCount = selectedIds().length;
     var bulkBar = selCount > 0 ? '<div class="bulk-bar">' +
       '<span>' + selCount + ' ' + esc(p.selected) + '</span>' +
@@ -77,6 +98,7 @@
       '<div class="tabs tabs-scroll">' +
       ['all', 'published', 'scheduled', 'draft', 'trash'].map(function (m) {
         var lbl = m === 'all' ? p.all : m === 'published' ? p.published : m === 'scheduled' ? p.scheduled : m === 'draft' ? p.draft : p.trash;
+        lbl = tabLabel(m, lbl, counts);
         return '<button type="button" class="tab' + (d.state.productFilter === m ? ' on' : '') + '" onclick="Admin.setProductFilter(\'' + m + '\')">' + esc(lbl) + '</button>';
       }).join('') +
       '</div>' +
@@ -211,17 +233,32 @@
       '<button type="button" class="btn-primary" onclick="Admin.saveCoupon(\'' + esc(isEdit ? (cup.cupon_id || cup.cupom_id || '') : '').replace(/'/g, "\\'") + '\')">' + esc(t().save) + '</button></div></div>';
   }
 
-  function setProductFilter(m) {
+  async function setProductFilter(m) {
+    m = String(m || 'all');
+    if (d.state.productFilter === m && d.state.view === 'products') {
+      d.renderMain();
+      return;
+    }
     d.state.productFilter = m;
     d.state.productSelected = {};
-    d.loadProducts();
+    d.renderMain();
+    try {
+      await d.loadProducts();
+      d.renderMain();
+    } catch (e) {
+      toast((e && e.message) || t().error, 'e');
+    }
   }
 
   var _prodSearchT;
   function setProductSearch(v) {
     d.state.productSearch = v;
     clearTimeout(_prodSearchT);
-    _prodSearchT = setTimeout(d.loadProducts, 400);
+    _prodSearchT = setTimeout(function () {
+      d.loadProducts().then(function () { d.renderMain(); }).catch(function (e) {
+        toast((e && e.message) || t().error, 'e');
+      });
+    }, 400);
   }
 
   function toggleProductSelect(id, on) {
