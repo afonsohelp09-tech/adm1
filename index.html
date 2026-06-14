@@ -377,35 +377,49 @@ function toast(msg, type) {
 <script src="product-wizard.js"></script>
 <script src="admin-pro.js"></script>
 
-<!-- ═══════════════════════════════════════════════════════════════════
-     CONFIGURATION API — FIN DU FICHIER (Ctrl+End pour arriver ici)
-     CONFIGURAÇÃO API — FIM DO FICHEIRO
-     ═══════════════════════════════════════════════════════════════════ -->
-<!--
-╔══════════════════════════════════════════════════════════════════╗
-║  CONFIGURAÇÃO — ALTERAR O URL DO WEB APP (admin + vitrine)       ║
-║  CONFIGURATION — MODIFIER L’URL DU WEB APP (admin + boutique)    ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Passo 1: Google Apps Script → Implementar / Déployer             ║
-║  Étape 1 : Déployer une nouvelle version de l’application Web    ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Passo 2: Copiar o URL que termina em /exec                      ║
-║  Étape 2 : Copier l’URL se terminant par /exec                   ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Passo 3: Colar na linha COLAR abaixo (ERP_API_URL_DEFAULT)       ║
-║           — mesma URL neste ficheiro e na vitrine (01-vitrine).   ║
-║  Étape 3 : Coller dans COLAR ci‑dessous ET dans ERP_API_URL_DEFAULT ║
-║            — aucun champ URL sur la page ; configuration fichier  ║
-╠══════════════════════════════════════════════════════════════════╣
-║  Passo 4: Guardar e recarregar esta página (Ctrl+F5).             ║
-║  Étape 4 : Enregistrer et recharger cette page (Ctrl+F5).        ║
-╚══════════════════════════════════════════════════════════════════╝
+<!-- ═══════════════════════════════════════════════════════════════════════════════
+     GUIDE DES CLÉS API — ADMIN ERP (02-admin-erp/index.html)
+     TOUJOURS EN FIN DE FICHIER · Ctrl+End pour arriver ici
+     Référence complète : 03-google-apps-script/api_apps_script.gs (fin du fichier)
+     ═══════════════════════════════════════════════════════════════════════════════
+
+     ┌─ #1 GOOGLE APPS SCRIPT — URL Web App (OBLIGATOIRE) ─────────────────────┐
+     │ Où coller : ERP_API_URL_DEFAULT ci-dessous (script erp-api-config)     │
+     │ Exemple   : 'https://script.google.com/macros/s/AKfycbz…/exec'         │
+     │ Même URL  : que 01-vitrine-client/index.html                             │
+     └──────────────────────────────────────────────────────────────────────────┘
+
+     ┌─ #2 STRIPE — Clé SECRÈTE sk_ (PAS dans ce fichier) ────────────────────┐
+     │ Où coller : Google Apps Script → Paramètres → Propriétés du script     │
+     │ Nom       : STRIPE_SECRET_KEY                                          │
+     │ Exemple   : sk_test_51TiHOcF66c2mP9HPjX7xZgJx1AEKz…                   │
+     └──────────────────────────────────────────────────────────────────────────┘
+
+     ┌─ #3 STRIPE — Clé PUBLIQUE pk_ (PAS ici — vitrine uniquement) ──────────┐
+     │ Où coller : 01-vitrine-client/index.html → STRIPE_PUBLISHABLE_KEY      │
+     └──────────────────────────────────────────────────────────────────────────┘
+
+     ┌─ #4 FACTURALUSA + #5 CONTACT — via écran Admin (après connexion) ───────┐
+     │ Menu Admin → Boutique → sections :                                     │
+     │   • Paiements : Stripe actif, Afficher Stripe                          │
+     │   • Contact   : contact_phone, contact_whatsapp, emails                │
+     │   • Facturação: fiscal_provider, fiscal_api_key, fiscal_doc_type       │
+     │ Exemple clé : 26830|PEKDtgsOzbPjo0ymkXvrNqZtgCmmOrvAaSBlzIxS347b0431 │
+     │ Obtenir     : https://facturalusa.pt/u/subscription/api                │
+     │ (Équivalent Sheets : onglet CONFIG, colonnes chave / valor)           │
+     └──────────────────────────────────────────────────────────────────────────┘
 -->
 <script id="erp-api-config">
-  // ▼▼▼ COLAR O URL AQUI — APENAS NESTA LINHA ▼▼▼
+  // ═══ CONFIGURATION API ADMIN — coller vos valeurs ici ═══
+  //
+  // #1 URL Web App Google Apps Script (obligatoire — même URL que la vitrine)
   var ERP_API_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbzjeXiiobFsAFfMnTujXYkDZOca6dVHR3-__Vv2POTZWHcz2LONQRcpwTBZle-rh1XBbg/exec';
   var API_URL = ERP_API_URL_DEFAULT;
-  // ▲▲▲ NÃO ALTERAR MAIS NADA AQUI (URL) ▲▲▲
+  //
+  // #2 Stripe sk_ → GAS Propriétés script STRIPE_SECRET_KEY (pas ici)
+  // #3 Stripe pk_ → 01-vitrine-client/index.html uniquement
+  // #4 Facturalusa + #5 Contact → écran Admin → Boutique (ou feuille CONFIG)
+  // Guide complet : fin de 03-google-apps-script/api_apps_script.gs
 </script>
 <script src="icons-ui.js"></script>
 <script src="erp-admin.js"></script>

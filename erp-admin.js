@@ -763,7 +763,8 @@
   }
 
   async function loadConfig() {
-    var res = await erpCall('getConfig', {});
+    var res = await erpCall('getConfigAdmin', {}, state.token);
+    if (!res || !res.success) res = await erpCall('getConfig', {});
     if (res && res.success) state.config = res.config || {};
   }
 
@@ -791,8 +792,12 @@
       social: social,
       promoOn: st.promo_banner_enabled,
       promoText: st.promo_banner_text || '',
+      promoBarDisplay: st.promo_bar_display == null || st.promo_bar_display === '' ? '1' : st.promo_bar_display,
+      promoShowDefault: st.promo_banner_show_default == null || st.promo_banner_show_default === '' ? '1' : st.promo_banner_show_default,
       announcement: {
         enabled: st.announcement_enabled,
+        display: st.announcement_display == null || st.announcement_display === '' ? '1' : st.announcement_display,
+        showDefault: st.announcement_show_default == null || st.announcement_show_default === '' ? '1' : st.announcement_show_default,
         marquee: st.announcement_marquee == null || st.announcement_marquee === '' ? '1' : st.announcement_marquee,
         text: st.announcement_text || '',
         label: st.announcement_promo_label || '',
@@ -1064,14 +1069,19 @@
       '</tbody></table></div>';
   }
 
+  var CLIENTS_RENDER_MAX = 200;
+
   function renderClients() {
     var c = t().cli;
+    var total = state.clients.length;
+    var visible = state.clients.slice(0, CLIENTS_RENDER_MAX);
     return '<div class="toolbar"><input class="search-in" placeholder="' + esc(t().search) + '" value="' + esc(state.clientSearch) + '" oninput="Admin.setClientSearch(this.value)"/></div>' +
       '<div class="table-wrap"><table class="data-table"><thead><tr><th>' + esc(c.name) + '</th><th>' + esc(c.email) + '</th><th>' + esc(c.phone) + '</th><th>' + esc(c.since) + '</th></tr></thead><tbody>' +
-      (state.clients.length ? state.clients.slice(0, 100).map(function (cl) {
+      (visible.length ? visible.map(function (cl) {
         return '<tr><td>' + esc(cl.nome) + '</td><td>' + esc(cl.email) + '</td><td>' + esc(cl.telefone) + '</td><td>' + esc(cl.data_registo || cl.data) + '</td></tr>';
       }).join('') : '<tr><td colspan="4" class="muted">' + esc(t().noData) + '</td></tr>') +
-      '</tbody></table></div>';
+      '</tbody></table></div>' +
+      (total > CLIENTS_RENDER_MAX ? '<p class="hint-block">' + esc(visible.length) + ' / ' + esc(total) + ' — ' + esc(t().search) + '</p>' : (total > 0 ? '<p class="hint-block">' + esc(total) + ' client(s)</p>' : ''));
   }
 
   function cfgVal(key, def) {
@@ -1110,14 +1120,27 @@
       check('cfg_guest_checkout', c.guestCheckout || 'Permitir compra sem conta (convidado)', cfgVal('guest_checkout_enabled', '1')) +
       '</section>' +
       '<section class="panel"><h2>' + esc(c.promo) + '</h2>' +
+      check('cfg_promo_bar_display', c.promoBarShow || 'Afficher le bandeau en haut de la vitrine', cfgVal('promo_bar_display', '1')) +
       check('cfg_promo_on', c.promoOn, cfgVal('promo_banner_enabled', '0')) +
       field('cfg_promo_text', c.promoText, cfgVal('promo_banner_text', '')) +
+      check('cfg_promo_show_default', c.promoShowDefault || 'Afficher le texte par défaut si la faixa est inactive', cfgVal('promo_banner_show_default', '1')) +
       '</section>' +
       '<section class="panel"><h2>' + esc(c.contact) + '</h2>' +
       field('cfg_store_email', c.storeEmail, cfgVal('store_email', '')) +
       field('cfg_contact_email', c.publicEmail, cfgVal('contact_public_email', '')) +
+      field('cfg_phone', c.phone || 'Telefone (reclamações)', cfgVal('contact_phone', '')) +
       field('cfg_whatsapp', c.whatsapp, cfgVal('contact_whatsapp', '')) +
       field('cfg_lang', c.lang, cfgVal('default_lang', 'pt')) +
+      '</section>' +
+      '<section class="panel"><h2>' + esc(c.fiscal || 'Facturação (Facturalusa)') + '</h2>' +
+      '<p class="field-help">' + esc(c.fiscalHint || 'Clé API depuis facturalusa.pt → Mon compte → API. La clé secrète Stripe (sk_…) se configure dans Google Apps Script → Propriétés du script.') + '</p>' +
+      field('cfg_fiscal_provider', c.fiscalProvider || 'Fournisseur', cfgVal('fiscal_provider', 'facturalusa')) +
+      check('cfg_fiscal_enabled', c.fiscalEnabled || 'Facturation certifiée activée', cfgVal('fiscal_enabled', '1')) +
+      check('cfg_fiscal_emit', c.fiscalEmit || 'Émettre la fatura au paiement', cfgVal('fiscal_emit_on_payment', '1')) +
+      field('cfg_fiscal_api_key', c.fiscalApiKey || 'Clé API Facturalusa', cfgVal('fiscal_api_key', ''), {
+        placeholder: cfgVal('fiscal_api_key_set', '') === '1' ? '•••••• (déjà configurée — laisser vide pour conserver)' : '26830|…'
+      }) +
+      field('cfg_fiscal_doc_type', c.fiscalDocType || 'Type de document', cfgVal('fiscal_doc_type', 'Factura Recibo')) +
       '</section>' +
       '<button type="submit" class="btn-primary wide">' + esc(t().save) + '</button></form>';
   }
@@ -1294,15 +1317,20 @@
       '</div>' +
       '</section>' +
       '<section class="panel"><h2>' + esc(v.promo) + '</h2>' +
+      '<p class="hint-block">' + esc(v.promoSectionHint || 'Contrôle ce qui s\'affiche en haut de la boutique client.') + '</p>' +
+      check('vit_promo_bar_display', v.promoBarShow || 'Afficher le bandeau en haut de la vitrine', sf.promoBarDisplay != null ? sf.promoBarDisplay : '1') +
       check('vit_promo_on', v.promoOn, promoOn ? '1' : '0') +
       field('vit_promo_text', v.promoText, sf.promoText || '', {
         placeholder: vitrineExampleSet(state.vitrineEditLang || 'pt').promoText,
         help: vitrineExampleHelp(vitrineExampleSet(state.vitrineEditLang || 'pt').promoText)
       }) +
+      check('vit_promo_show_default', v.promoShowDefault || 'Afficher le texte par défaut (livraison, retours…) si la faixa est inactive', sf.promoShowDefault != null ? sf.promoShowDefault : '1') +
       '<h2 style="margin-top:18px">' + esc(v.annTitle || 'Campanha / Anúncio (avançado)') + '</h2>' +
-      '<p class="hint-block">' + esc(v.annHint || 'Campanha com datas e variáveis. Se ativa, tem prioridade sobre a faixa promocional acima.') + '</p>' +
+      '<p class="hint-block">' + esc(v.annHint || 'Campanha com datas e variáveis. Se ativa et affichée, tem prioridade sobre a faixa promocional acima.') + '</p>' +
       check('vit_ann_on', v.annOn || 'Ativar campanha', ann.enabled) +
+      check('vit_ann_display', v.annDisplay || 'Afficher la campagne sur la vitrine', ann.display != null ? ann.display : '1') +
       check('vit_ann_marquee', v.annMarquee || 'Texto deslizante (marquee)', ann.marquee) +
+      check('vit_ann_show_default', v.annShowDefault || 'Afficher le repli automatique (code promo) si le texte est vide', ann.showDefault != null ? ann.showDefault : '1') +
       field('vit_ann_text', v.annText || 'Texto do anúncio', ann.text || '', {
         placeholder: '✦ {{promo_label}} · -{{pct}}% COM O CÓDIGO {{code}} ATÉ {{valid_until}} ✦',
         help: v.annTextHelp || 'Variáveis disponíveis: {{pct}}, {{pct2}}, {{code}}, {{amount}}, {{min_cart}}, {{valid_until}}, {{promo_label}}.'
@@ -1595,8 +1623,12 @@
     };
     state.storefront.promoOn = chk('vit_promo_on');
     state.storefront.promoText = val('vit_promo_text').trim();
+    state.storefront.promoBarDisplay = chk('vit_promo_bar_display');
+    state.storefront.promoShowDefault = chk('vit_promo_show_default');
     state.storefront.announcement = {
       enabled: chk('vit_ann_on'),
+      display: chk('vit_ann_display'),
+      showDefault: chk('vit_ann_show_default'),
       marquee: chk('vit_ann_marquee'),
       text: val('vit_ann_text').trim(),
       label: val('vit_ann_label').trim(),
@@ -1650,10 +1682,14 @@
       social_pinterest: (sf.social && sf.social.pinterest) || '',
       social_tiktok: (sf.social && sf.social.tiktok) || '',
       promo_banner_enabled: sf.promoOn || '0',
+      promo_bar_display: sf.promoBarDisplay || '1',
+      promo_banner_show_default: sf.promoShowDefault || '1',
       promo_banner_text: sf.promoText || ''
     };
     var ann = sf.announcement || {};
     patch.announcement_enabled = ann.enabled || '0';
+    patch.announcement_display = ann.display || '1';
+    patch.announcement_show_default = ann.showDefault || '1';
     patch.announcement_marquee = ann.marquee || '0';
     patch.announcement_text = ann.text || '';
     patch.announcement_promo_label = ann.label || '';
@@ -1703,8 +1739,12 @@
       social_pinterest: sf.social.pinterest,
       social_tiktok: sf.social.tiktok,
       promo_banner_enabled: sf.promoOn,
+      promo_bar_display: sf.promoBarDisplay,
+      promo_banner_show_default: sf.promoShowDefault,
       promo_banner_text: sf.promoText,
       announcement_enabled: (sf.announcement && sf.announcement.enabled) || '0',
+      announcement_display: (sf.announcement && sf.announcement.display) || '1',
+      announcement_show_default: (sf.announcement && sf.announcement.showDefault) || '1',
       announcement_marquee: (sf.announcement && sf.announcement.marquee) || '0',
       announcement_text: (sf.announcement && sf.announcement.text) || '',
       announcement_promo_label: (sf.announcement && sf.announcement.label) || '',
@@ -2130,6 +2170,8 @@
         '<div class="field"><label>' + esc(o.tracking) + '</label><input id="of_track" value="' + esc(ent.tracking_number || ord.tracking_number || '') + '"/></div></div>' +
         '<div class="field"><label>' + esc(o.notes) + '</label><textarea id="of_notes" rows="2">' + esc(ord.notas || '') + '</textarea></div>' +
         '<div class="modal-actions"><button type="button" class="btn-ghost" onclick="Admin.closeModal()">' + esc(t().cancel) + '</button>' +
+        '<button type="button" class="btn-ghost" onclick="Admin.printOrderInvoice(\'' + esc(orderId).replace(/'/g, "\\'") + '\')">' + esc(o.printInvoice || 'Imprimer facture') + '</button>' +
+        (curEst !== 'cancelled' && curEst !== 'cancelado' ? '<button type="button" class="btn-ghost" style="color:var(--danger,#c44);" onclick="Admin.cancelOrder(\'' + esc(orderId).replace(/'/g, "\\'") + '\')">' + esc(o.cancelOrder || 'Annuler la commande') + '</button>' : '') +
         '<button type="button" class="btn-primary" id="btnSaveOrder" onclick="Admin.saveOrder(\'' + esc(orderId).replace(/'/g, "\\'") + '\')">' + esc(o.updateStatus) + '</button></div></div>'
       );
     } catch (e) { toast(apiErrMsg(e), 'e'); }
@@ -2149,6 +2191,37 @@
       var sh = $('of_ship');
       if (sh) sh.value = 'em_transito';
     }
+  }
+
+  async function printOrderInvoice(orderId) {
+    orderId = String(orderId || '').trim();
+    if (!orderId) return;
+    try {
+      var res = await erpCall('getInvoiceData', { orderId: orderId });
+      if (!res || !res.success || !res.html) { toast(t().error, 'e'); return; }
+      var w = window.open('', '_blank', 'noopener,noreferrer,width=820,height=960');
+      if (!w) { toast(t().error, 'e'); return; }
+      w.document.open();
+      w.document.write(res.html);
+      w.document.close();
+      w.focus();
+      setTimeout(function () { try { w.print(); } catch (e) { /* ignore */ } }, 450);
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
+  }
+
+  async function cancelOrder(orderId) {
+    orderId = String(orderId || '').trim();
+    var o = t().ord || {};
+    if (!orderId) return;
+    if (!global.confirm(o.cancelConfirm || 'Annuler cette commande et restaurer le stock ?')) return;
+    try {
+      var res = await erpCall('cancelOrder', { orderId: orderId });
+      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
+      closeModal();
+      toast(o.cancelledOk || 'Commande annulée', 's');
+      await loadOrders();
+      renderOrdersPanel();
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
   }
 
   async function saveOrder(orderId) {
@@ -2207,12 +2280,21 @@
       pay_paypal_me: val('cfg_paypal_me'),
       guest_checkout_enabled: chk('cfg_guest_checkout'),
       promo_banner_enabled: chk('cfg_promo_on'),
+      promo_bar_display: chk('cfg_promo_bar_display'),
+      promo_banner_show_default: chk('cfg_promo_show_default'),
       promo_banner_text: val('cfg_promo_text'),
       store_email: val('cfg_store_email'),
       contact_public_email: val('cfg_contact_email'),
+      contact_phone: val('cfg_phone'),
       contact_whatsapp: val('cfg_whatsapp'),
-      default_lang: val('cfg_lang')
+      default_lang: val('cfg_lang'),
+      fiscal_provider: val('cfg_fiscal_provider'),
+      fiscal_enabled: chk('cfg_fiscal_enabled'),
+      fiscal_emit_on_payment: chk('cfg_fiscal_emit'),
+      fiscal_doc_type: val('cfg_fiscal_doc_type')
     };
+    var fiscalKey = val('cfg_fiscal_api_key');
+    if (fiscalKey) patch.fiscal_api_key = fiscalKey;
     try {
       var res = await erpCall('updateConfig', patch);
       if (!res || !res.success) { toast(t().error, 'e'); return; }
@@ -2312,6 +2394,8 @@
     removeCategory: removeCategory,
     openOrder: openOrder,
     saveOrder: saveOrder,
+    cancelOrder: cancelOrder,
+    printOrderInvoice: printOrderInvoice,
     exportOrders: exportOrders,
     saveConfig: saveConfig,
     setVitrineLang: setVitrineLang,
@@ -2371,4 +2455,34 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () { init(); });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  GUIDE API — ADMIN ERP (erp-admin.js · fin de fichier)
+  //  Les clés sensibles se configurent ICI dans l’interface, pas dans ce .js
+  //  Référence complète : 03-google-apps-script/api_apps_script.gs (Ctrl+End)
+  // ═══════════════════════════════════════════════════════════════════════════
+  //
+  //  Écran Admin → menu « Boutique » (renderConfig / saveConfig) :
+  //
+  //  #4 FACTURALUSA
+  //    Champs   : cfg_fiscal_provider, cfg_fiscal_enabled, cfg_fiscal_emit,
+  //               cfg_fiscal_api_key, cfg_fiscal_doc_type
+  //    Sheets   : fiscal_provider, fiscal_enabled, fiscal_emit_on_payment,
+  //               fiscal_api_key, fiscal_doc_type
+  //    Exemple  : fiscal_api_key = 26830|PEKDtgsOzbPjo0ymkXvrNqZtgCmmOrvAaSBlzIxS347b0431
+  //    Obtenir  : https://facturalusa.pt/u/subscription/api
+  //    Note     : laisser cfg_fiscal_api_key vide pour conserver la clé existante
+  //
+  //  #5 CONTACT
+  //    Champs   : cfg_phone (+351 939 211 794), cfg_whatsapp (939211794),
+  //               cfg_contact_email, cfg_store_email
+  //
+  //  STRIPE (#2 sk_ + #3 pk_)
+  //    sk_      : GAS → Propriétés script → STRIPE_SECRET_KEY (jamais ici)
+  //    pk_      : 01-vitrine-client/index.html → STRIPE_PUBLISHABLE_KEY
+  //    Admin    : cfg_stripe + cfg_show_stripe (pay_stripe_enabled dans CONFIG)
+  //
+  //  MODÈLE nouvelle API : documenter dans api_apps_script.gs fin + ajouter
+  //  champs renderConfig/saveConfig + clés getDefaultConfigCatalog_()
+  // ═══════════════════════════════════════════════════════════════════════════
 })(typeof window !== 'undefined' ? window : this);

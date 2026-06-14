@@ -43,9 +43,21 @@
     } catch (e) { return String(v); }
   }
 
+  function productStatusNorm(p) {
+    return String((p && p.status) || '').toLowerCase().trim();
+  }
+
+  function isTrashProduct(p) {
+    return productStatusNorm(p) === 'lixeira';
+  }
+
   function filteredProducts() {
     var rows = d.state.products.slice();
     var f = d.state.productFilter;
+    if (f === 'trash') {
+      return rows.filter(isTrashProduct);
+    }
+    rows = rows.filter(function (p) { return !isTrashProduct(p); });
     if (f === 'published') rows = rows.filter(function (p) { return normCat(p) === 'publicado'; });
     else if (f === 'scheduled') rows = rows.filter(function (p) { return normCat(p) === 'agendado'; });
     else if (f === 'draft') rows = rows.filter(function (p) { return normCat(p) === 'rascunho'; });
@@ -173,13 +185,17 @@
       '</div>' +
       '<button type="button" class="btn-primary" onclick="Admin.editCoupon(null)">' + esc(c.new) + '</button></div>' +
       '<div class="table-wrap"><table class="data-table"><thead><tr>' +
-      '<th>' + esc(c.code) + '</th><th>' + esc(c.type) + '</th><th>' + esc(c.value) + '</th><th>' + esc(c.minOrder) + '</th><th>' + esc(c.startDate) + '</th><th>' + esc(c.endDate) + '</th><th>' + esc(c.usage) + '</th><th>' + esc(c.status) + '</th><th></th></tr></thead><tbody>' +
+      '<th>' + esc(c.code) + '</th><th>' + esc(c.type) + '</th><th>' + esc(c.value) + '</th><th>' + esc(c.minOrder) + '</th><th>' + esc(c.internalNoteShort || c.internalNote || 'Note') + '</th><th>' + esc(c.startDate) + '</th><th>' + esc(c.endDate) + '</th><th>' + esc(c.usage) + '</th><th>' + esc(c.status) + '</th><th></th></tr></thead><tbody>' +
       (rows.length ? rows.map(function (cup) {
         var id = esc(cup.cupon_id || cup.cupom_id || cup.codigo).replace(/'/g, "\\'");
         var tipoLbl = cup.tipo === 'percent' ? c.percent : cup.tipo === 'fixed' ? c.fixed : c.freeShip;
         var uso = esc(cup.uso_atual || 0) + (cup.uso_max ? ' / ' + esc(cup.uso_max) : '');
         var minO = cup.pedido_minimo ? esc(cup.pedido_minimo) + ' €' : '—';
-        return '<tr><td><strong>' + esc(cup.codigo) + '</strong></td><td>' + esc(tipoLbl) + '</td><td>' + esc(cup.valor) + '</td><td>' + minO + '</td>' +
+        var noteRaw = String(cup.nota_interna || '').trim();
+        var noteCell = noteRaw
+          ? '<span class="cup-internal-note" title="' + esc(noteRaw) + '">' + esc(noteRaw.length > 42 ? noteRaw.slice(0, 42) + '…' : noteRaw) + '</span>'
+          : '<span class="muted">—</span>';
+        return '<tr><td><strong>' + esc(cup.codigo) + '</strong></td><td>' + esc(tipoLbl) + '</td><td>' + esc(cup.valor) + '</td><td>' + minO + '</td><td>' + noteCell + '</td>' +
           '<td>' + esc(formatDate(cup.data_inicio)) + '</td><td>' + esc(formatDate(cup.data_fim) || '—') + '</td><td>' + uso + '</td>' +
           '<td><span class="badge ' + (String(cup.status).toLowerCase() === 'ativo' ? 'badge-pub' : 'badge-draft') + '">' + esc(cup.status || 'ativo') + '</span></td>' +
           '<td class="actions">' +
@@ -188,7 +204,7 @@
               '<button type="button" class="btn-sm danger" onclick="Admin.removeCoupon(\'' + id + '\')">' + esc(t().delete) + '</button>'
             : '') +
           '</td></tr>';
-      }).join('') : '<tr><td colspan="9" class="muted">' + esc(t().noData) + '</td></tr>') +
+      }).join('') : '<tr><td colspan="10" class="muted">' + esc(t().noData) + '</td></tr>') +
       '</tbody></table></div>';
   }
 
@@ -213,6 +229,9 @@
       '<section class="panel" style="margin-bottom:12px"><h2 style="font-size:11px;margin-bottom:10px">' + esc(c.code) + '</h2>' +
       '<div class="field"><label>' + esc(c.code) + ' *</label><input id="cup_code" value="' + esc(cup ? cup.codigo : '') + '"' + (isEdit ? ' readonly' : '') + ' placeholder="PROMO2026"/></div>' +
       '<div class="field"><label>' + esc(c.desc) + '</label><input id="cup_desc" value="' + esc(cup ? (cup.descricao || '') : '') + '"/></div>' +
+      '<div class="field"><label>' + esc(c.internalNote || 'Note interne (admin)') + '</label>' +
+      '<textarea id="cup_internal_note" rows="2" placeholder="' + esc(c.internalNotePlaceholder || 'Ex. : groupe VIP, client Marie…') + '">' + esc(cup ? (cup.nota_interna || '') : '') + '</textarea>' +
+      '<p class="field-help">' + esc(c.internalNoteHelp || 'Visible uniquement dans l\'admin — jamais sur la vitrine client.') + '</p></div>' +
       '<div class="field"><label>' + esc(c.status) + '</label><select id="cup_status">' +
       '<option value="ativo"' + (!cup || String(cup.status).toLowerCase() !== 'inativo' ? ' selected' : '') + '>' + esc(c.active) + '</option>' +
       '<option value="inativo"' + (cup && String(cup.status).toLowerCase() === 'inativo' ? ' selected' : '') + '>' + esc(c.inactive) + '</option></select></div></section>' +
@@ -241,23 +260,35 @@
     }
     d.state.productFilter = m;
     d.state.productSelected = {};
+    d.state.products = [];
+    d.state.loading = true;
     d.renderMain();
     try {
       await d.loadProducts();
-      d.renderMain();
     } catch (e) {
       toast((e && e.message) || t().error, 'e');
+    } finally {
+      d.state.loading = false;
     }
+    d.renderMain();
   }
 
   var _prodSearchT;
   function setProductSearch(v) {
     d.state.productSearch = v;
     clearTimeout(_prodSearchT);
-    _prodSearchT = setTimeout(function () {
-      d.loadProducts().then(function () { d.renderMain(); }).catch(function (e) {
+    _prodSearchT = setTimeout(async function () {
+      d.state.products = [];
+      d.state.loading = true;
+      d.renderMain();
+      try {
+        await d.loadProducts();
+      } catch (e) {
         toast((e && e.message) || t().error, 'e');
-      });
+      } finally {
+        d.state.loading = false;
+      }
+      d.renderMain();
     }, 400);
   }
 
@@ -392,6 +423,7 @@
       data_fim: ($('cup_end') && $('cup_end').value) || '',
       uso_max: parseInt($('cup_max') && $('cup_max').value, 10) || 0,
       descricao: ($('cup_desc') && $('cup_desc').value) || '',
+      nota_interna: ($('cup_internal_note') && $('cup_internal_note').value.trim()) || '',
       pedido_minimo: ($('cup_min') && $('cup_min').value) ? parseFloat($('cup_min').value) : '',
       categoria: ($('cup_cat') && $('cup_cat').value) || '',
       status: ($('cup_status') && $('cup_status').value) || 'ativo'
