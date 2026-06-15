@@ -204,6 +204,22 @@
 
   var VITRINE_LANGS = ['pt', 'fr', 'en', 'es'];
 
+  function storefrontDisplayFromSettings(st) {
+    st = st || {};
+    function f(k) {
+      return st[k] == null || st[k] === '' ? '1' : String(st[k]);
+    }
+    return {
+      heroEyebrow: f('vitrine_display_hero_eyebrow'),
+      heroTitle: f('vitrine_display_hero_title'),
+      heroSub: f('vitrine_display_hero_sub'),
+      heroButtons: f('vitrine_display_hero_buttons'),
+      shopHeader: f('vitrine_display_shop_header'),
+      footerDesc: f('vitrine_display_footer_desc'),
+      services: f('vitrine_display_services')
+    };
+  }
+
   function buildStorefrontContentFromSettings(st) {
     var content = {};
     VITRINE_LANGS.forEach(function (lg) {
@@ -809,7 +825,8 @@
         validUntil: st.announcement_promo_valid_until || '',
         dateStart: st.announcement_date_start || '',
         dateEnd: st.announcement_date_end || ''
-      }
+      },
+      display: storefrontDisplayFromSettings(st)
     };
     if (!state.vitrineEditLang) state.vitrineEditLang = state.storefront.defaultLang || 'pt';
   }
@@ -1098,7 +1115,7 @@
       field('cfg_flat', c.flatRate, cfgVal('shipping_flat_rate', '7.9')) +
       '</section>' +
       '<section class="panel"><h2>' + esc(c.payments) + '</h2>' +
-      check('cfg_stripe', c.stripe, cfgVal('pay_stripe_enabled', '0')) +
+      check('cfg_stripe', c.stripe, cfgVal('pay_stripe_enabled', '1')) +
       check('cfg_cod', c.cod, cfgVal('pay_cod_enabled', '1')) +
       check('cfg_show_stripe', c.showStripe, cfgVal('pay_show_stripe', '1')) +
       check('cfg_show_cod', c.showCod, cfgVal('pay_show_cod', '1')) +
@@ -1217,6 +1234,23 @@
     return (v.exampleLabel || 'Exemple actuellement visible sur la vitrine :') + ' ' + example;
   }
 
+  function vitrineDisplayPanel() {
+    var v = t().vit || {};
+    var d = (state.storefront && state.storefront.display) || storefrontDisplayFromSettings({});
+    return '<div class="panel-sub"><h3 style="margin:0 0 10px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--gold)">' +
+      esc(v.displaySection || 'Affichage sur la vitrine client') + '</h3>' +
+      '<p class="field-help" style="margin-bottom:12px">' + esc(v.displaySectionHint || 'Décochez pour masquer un bloc sur la boutique client (01-vitrine-client). Les textes restent enregistrés.') + '</p>' +
+      '<div class="check-grid">' +
+      check('vit_disp_hero_eye', v.showHeroEye || 'Sur-titre hero', d.heroEyebrow) +
+      check('vit_disp_hero_title', v.showHeroTitle || 'Titre hero', d.heroTitle) +
+      check('vit_disp_hero_sub', v.showHeroSub || 'Sous-titre hero', d.heroSub) +
+      check('vit_disp_hero_btns', v.showHeroButtons || 'Boutons hero', d.heroButtons) +
+      check('vit_disp_shop_hdr', v.showShopHeader || 'Titre section boutique', d.shopHeader) +
+      check('vit_disp_footer_desc', v.showFooterDesc || 'Description pied de page', d.footerDesc) +
+      check('vit_disp_services', v.showServices || 'Bandeau services (4 infos)', d.services) +
+      '</div></div>';
+  }
+
   function vitrineLangBlock() {
     var v = t().vit || {};
     var lg = state.vitrineEditLang || 'pt';
@@ -1304,6 +1338,7 @@
       '</section>' +
       '<section class="panel"><h2>' + esc(v.texts) + '</h2>' +
       '<p class="hint-block">' + esc(v.langTab) + '</p>' +
+      vitrineDisplayPanel() +
       vitrineLangBlock() +
       '</section>' +
       '<section class="panel"><h2>' + esc(v.social) + '</h2>' +
@@ -1318,16 +1353,17 @@
       '</section>' +
       '<section class="panel"><h2>' + esc(v.promo) + '</h2>' +
       '<p class="hint-block">' + esc(v.promoSectionHint || 'Contrôle ce qui s\'affiche en haut de la boutique client.') + '</p>' +
+      '<p class="field-help" style="margin-bottom:10px"><strong>' + esc(v.promoBarSection || 'Bandeau du haut') + '</strong></p>' +
       check('vit_promo_bar_display', v.promoBarShow || 'Afficher le bandeau en haut de la vitrine', sf.promoBarDisplay != null ? sf.promoBarDisplay : '1') +
-      check('vit_promo_on', v.promoOn, promoOn ? '1' : '0') +
+      check('vit_promo_on', v.promoOn || 'Faixa active (contenu personnalisé)', promoOn ? '1' : '0') +
       field('vit_promo_text', v.promoText, sf.promoText || '', {
         placeholder: vitrineExampleSet(state.vitrineEditLang || 'pt').promoText,
         help: vitrineExampleHelp(vitrineExampleSet(state.vitrineEditLang || 'pt').promoText)
       }) +
       check('vit_promo_show_default', v.promoShowDefault || 'Afficher le texte par défaut (livraison, retours…) si la faixa est inactive', sf.promoShowDefault != null ? sf.promoShowDefault : '1') +
-      '<h2 style="margin-top:18px">' + esc(v.annTitle || 'Campanha / Anúncio (avançado)') + '</h2>' +
+      '<p class="field-help" style="margin:16px 0 10px"><strong>' + esc(v.annTitle || 'Campanha / Anúncio (avançado)') + '</strong></p>' +
       '<p class="hint-block">' + esc(v.annHint || 'Campanha com datas e variáveis. Se ativa et affichée, tem prioridade sobre a faixa promocional acima.') + '</p>' +
-      check('vit_ann_on', v.annOn || 'Ativar campanha', ann.enabled) +
+      check('vit_ann_on', v.annOn || 'Ativar campanha (contenu + dates)', ann.enabled === '1' || ann.enabled === 1 ? '1' : (ann.enabled || '0')) +
       check('vit_ann_display', v.annDisplay || 'Afficher la campagne sur la vitrine', ann.display != null ? ann.display : '1') +
       check('vit_ann_marquee', v.annMarquee || 'Texto deslizante (marquee)', ann.marquee) +
       check('vit_ann_show_default', v.annShowDefault || 'Afficher le repli automatique (code promo) si le texte est vide', ann.showDefault != null ? ann.showDefault : '1') +
@@ -1625,6 +1661,15 @@
     state.storefront.promoText = val('vit_promo_text').trim();
     state.storefront.promoBarDisplay = chk('vit_promo_bar_display');
     state.storefront.promoShowDefault = chk('vit_promo_show_default');
+    state.storefront.display = {
+      heroEyebrow: chk('vit_disp_hero_eye'),
+      heroTitle: chk('vit_disp_hero_title'),
+      heroSub: chk('vit_disp_hero_sub'),
+      heroButtons: chk('vit_disp_hero_btns'),
+      shopHeader: chk('vit_disp_shop_hdr'),
+      footerDesc: chk('vit_disp_footer_desc'),
+      services: chk('vit_disp_services')
+    };
     state.storefront.announcement = {
       enabled: chk('vit_ann_on'),
       display: chk('vit_ann_display'),
@@ -1686,6 +1731,14 @@
       promo_banner_show_default: sf.promoShowDefault || '1',
       promo_banner_text: sf.promoText || ''
     };
+    var disp = sf.display || {};
+    patch.vitrine_display_hero_eyebrow = disp.heroEyebrow || '1';
+    patch.vitrine_display_hero_title = disp.heroTitle || '1';
+    patch.vitrine_display_hero_sub = disp.heroSub || '1';
+    patch.vitrine_display_hero_buttons = disp.heroButtons || '1';
+    patch.vitrine_display_shop_header = disp.shopHeader || '1';
+    patch.vitrine_display_footer_desc = disp.footerDesc || '1';
+    patch.vitrine_display_services = disp.services || '1';
     var ann = sf.announcement || {};
     patch.announcement_enabled = ann.enabled || '0';
     patch.announcement_display = ann.display || '1';
@@ -1703,14 +1756,15 @@
     patch.announcement_date_end = ann.dateEnd || '';
     ['pt', 'fr', 'en', 'es'].forEach(function (lg) {
       var block = (sf.content && sf.content[lg]) || {};
-      patch['vitrine_hero_eyebrow_' + lg] = block.hEye || '';
-      patch['vitrine_hero_title_' + lg] = block.hTitle || '';
-      patch['vitrine_hero_sub_' + lg] = block.hSub || '';
-      patch['vitrine_hero_btn1_' + lg] = block.hBtn1 || '';
+      if (!block || typeof block !== 'object') return;
+      patch['vitrine_hero_eyebrow_' + lg] = block.hEye != null ? block.hEye : '';
+      patch['vitrine_hero_title_' + lg] = block.hTitle != null ? block.hTitle : '';
+      patch['vitrine_hero_sub_' + lg] = block.hSub != null ? block.hSub : '';
+      patch['vitrine_hero_btn1_' + lg] = block.hBtn1 != null ? block.hBtn1 : '';
       patch['vitrine_hero_btn2_' + lg] = block.hBtn2 || '';
-      patch['vitrine_shop_label_' + lg] = block.shopLabel || '';
-      patch['vitrine_shop_title_' + lg] = block.shopTitle || '';
-      patch['vitrine_footer_desc_' + lg] = block.fDesc || '';
+      patch['vitrine_shop_label_' + lg] = block.shopLabel != null ? block.shopLabel : '';
+      patch['vitrine_shop_title_' + lg] = block.shopTitle != null ? block.shopTitle : '';
+      patch['vitrine_footer_desc_' + lg] = block.fDesc != null ? block.fDesc : '';
     });
     return patch;
   }
@@ -1756,6 +1810,13 @@
       announcement_promo_valid_until: (sf.announcement && sf.announcement.validUntil) || '',
       announcement_date_start: (sf.announcement && sf.announcement.dateStart) || '',
       announcement_date_end: (sf.announcement && sf.announcement.dateEnd) || '',
+      vitrine_display_hero_eyebrow: (sf.display && sf.display.heroEyebrow) || '1',
+      vitrine_display_hero_title: (sf.display && sf.display.heroTitle) || '1',
+      vitrine_display_hero_sub: (sf.display && sf.display.heroSub) || '1',
+      vitrine_display_hero_buttons: (sf.display && sf.display.heroButtons) || '1',
+      vitrine_display_shop_header: (sf.display && sf.display.shopHeader) || '1',
+      vitrine_display_footer_desc: (sf.display && sf.display.footerDesc) || '1',
+      vitrine_display_services: (sf.display && sf.display.services) || '1',
       content: sf.content
     };
     var res = await erpCall('updateStorefront', payload);
