@@ -216,7 +216,9 @@
       heroButtons: f('vitrine_display_hero_buttons'),
       shopHeader: f('vitrine_display_shop_header'),
       footerDesc: f('vitrine_display_footer_desc'),
-      services: f('vitrine_display_services')
+      services: f('vitrine_display_services'),
+      social: f('vitrine_display_social'),
+      promoFaixa: f('vitrine_display_promo_faixa')
     };
   }
 
@@ -824,8 +826,10 @@
         minCart: st.announcement_promo_min_cart_eur || '',
         validUntil: st.announcement_promo_valid_until || '',
         dateStart: st.announcement_date_start || '',
-        dateEnd: st.announcement_date_end || ''
+        dateEnd: st.announcement_date_end || '',
+        labelDisplay: st.announcement_promo_label_display == null || st.announcement_promo_label_display === '' ? '1' : st.announcement_promo_label_display
       },
+      promoFaixaDisplay: st.vitrine_display_promo_faixa == null || st.vitrine_display_promo_faixa === '' ? '1' : st.vitrine_display_promo_faixa,
       display: storefrontDisplayFromSettings(st)
     };
     if (!state.vitrineEditLang) state.vitrineEditLang = state.storefront.defaultLang || 'pt';
@@ -1234,21 +1238,28 @@
     return (v.exampleLabel || 'Exemple actuellement visible sur la vitrine :') + ' ' + example;
   }
 
+  function vitrineDisplaySubPanel(sectionTitle, hint, checksHtml) {
+    var v = t().vit || {};
+    return '<div class="panel-sub"><h3 style="margin:0 0 10px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--gold)">' +
+      esc(sectionTitle || v.displaySection || 'Affichage sur la vitrine client') + '</h3>' +
+      (hint ? '<p class="field-help" style="margin-bottom:12px">' + esc(hint) + '</p>' : '') +
+      '<div class="check-grid">' + checksHtml + '</div></div>';
+  }
+
   function vitrineDisplayPanel() {
     var v = t().vit || {};
     var d = (state.storefront && state.storefront.display) || storefrontDisplayFromSettings({});
-    return '<div class="panel-sub"><h3 style="margin:0 0 10px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:var(--gold)">' +
-      esc(v.displaySection || 'Affichage sur la vitrine client') + '</h3>' +
-      '<p class="field-help" style="margin-bottom:12px">' + esc(v.displaySectionHint || 'Décochez pour masquer un bloc sur la boutique client (01-vitrine-client). Les textes restent enregistrés.') + '</p>' +
-      '<div class="check-grid">' +
+    return vitrineDisplaySubPanel(
+      v.displayTextsSection || v.texts || 'Textos exibidos',
+      v.displaySectionHint || 'Décochez pour masquer un bloc sur la boutique client. Les textes restent enregistrés.',
       check('vit_disp_hero_eye', v.showHeroEye || 'Sur-titre hero', d.heroEyebrow) +
       check('vit_disp_hero_title', v.showHeroTitle || 'Titre hero', d.heroTitle) +
       check('vit_disp_hero_sub', v.showHeroSub || 'Sous-titre hero', d.heroSub) +
       check('vit_disp_hero_btns', v.showHeroButtons || 'Boutons hero', d.heroButtons) +
       check('vit_disp_shop_hdr', v.showShopHeader || 'Titre section boutique', d.shopHeader) +
       check('vit_disp_footer_desc', v.showFooterDesc || 'Description pied de page', d.footerDesc) +
-      check('vit_disp_services', v.showServices || 'Bandeau services (4 infos)', d.services) +
-      '</div></div>';
+      check('vit_disp_services', v.showServices || 'Bandeau services (4 infos)', d.services)
+    );
   }
 
   function vitrineLangBlock() {
@@ -1342,6 +1353,11 @@
       vitrineLangBlock() +
       '</section>' +
       '<section class="panel"><h2>' + esc(v.social) + '</h2>' +
+      vitrineDisplaySubPanel(
+        v.displaySocialSection || v.social || 'Redes sociais',
+        v.displaySocialHint || v.displaySectionHint,
+        check('vit_disp_social', v.showSocial || 'Afficher les icônes réseaux sociaux dans le pied de page', ((state.storefront && state.storefront.display) || storefrontDisplayFromSettings({})).social)
+      ) +
       '<div class="fgrid">' +
       field('vit_social_insta', v.instagram, social.instagram || '') +
       field('vit_social_fb', v.facebook, social.facebook || '') +
@@ -1353,8 +1369,12 @@
       '</section>' +
       '<section class="panel"><h2>' + esc(v.promo) + '</h2>' +
       '<p class="hint-block">' + esc(v.promoSectionHint || 'Contrôle ce qui s\'affiche en haut de la boutique client.') + '</p>' +
-      '<p class="field-help" style="margin-bottom:10px"><strong>' + esc(v.promoBarSection || 'Bandeau du haut') + '</strong></p>' +
-      check('vit_promo_bar_display', v.promoBarShow || 'Afficher le bandeau en haut de la vitrine', sf.promoBarDisplay != null ? sf.promoBarDisplay : '1') +
+      vitrineDisplaySubPanel(
+        v.displayPromoSection || v.promo || 'Faixa promocional',
+        v.displayPromoHint || v.promoSectionHint,
+        check('vit_promo_bar_display', v.promoBarShow || 'Afficher le bandeau en haut de la vitrine', sf.promoBarDisplay != null ? sf.promoBarDisplay : '1') +
+        check('vit_disp_promo_faixa', v.showPromoFaixa || 'Afficher le contenu de la faixa promocional (texte personnalisé ou défaut)', sf.promoFaixaDisplay != null ? sf.promoFaixaDisplay : (((state.storefront && state.storefront.display) || storefrontDisplayFromSettings({})).promoFaixa))
+      ) +
       check('vit_promo_on', v.promoOn || 'Faixa active (contenu personnalisé)', promoOn ? '1' : '0') +
       field('vit_promo_text', v.promoText, sf.promoText || '', {
         placeholder: vitrineExampleSet(state.vitrineEditLang || 'pt').promoText,
@@ -1363,8 +1383,13 @@
       check('vit_promo_show_default', v.promoShowDefault || 'Afficher le texte par défaut (livraison, retours…) si la faixa est inactive', sf.promoShowDefault != null ? sf.promoShowDefault : '1') +
       '<p class="field-help" style="margin:16px 0 10px"><strong>' + esc(v.annTitle || 'Campanha / Anúncio (avançado)') + '</strong></p>' +
       '<p class="hint-block">' + esc(v.annHint || 'Campanha com datas e variáveis. Se ativa et affichée, tem prioridade sobre a faixa promocional acima.') + '</p>' +
+      vitrineDisplaySubPanel(
+        v.displayAnnSection || v.annTitle || 'Campanha / Anúncio',
+        v.displayAnnHint || v.displaySectionHint,
+        check('vit_ann_display', v.annDisplay || 'Afficher la campagne sur la vitrine', ann.display != null ? ann.display : '1') +
+        check('vit_ann_label_display', v.showPromoLabel || 'Afficher le titre campagne ({{promo_label}}) dans les textes', ann.labelDisplay != null ? ann.labelDisplay : '1')
+      ) +
       check('vit_ann_on', v.annOn || 'Ativar campanha (contenu + dates)', ann.enabled === '1' || ann.enabled === 1 ? '1' : (ann.enabled || '0')) +
-      check('vit_ann_display', v.annDisplay || 'Afficher la campagne sur la vitrine', ann.display != null ? ann.display : '1') +
       check('vit_ann_marquee', v.annMarquee || 'Texto deslizante (marquee)', ann.marquee) +
       check('vit_ann_show_default', v.annShowDefault || 'Afficher le repli automatique (code promo) si le texte est vide', ann.showDefault != null ? ann.showDefault : '1') +
       field('vit_ann_text', v.annText || 'Texto do anúncio', ann.text || '', {
@@ -1660,6 +1685,7 @@
     state.storefront.promoOn = chk('vit_promo_on');
     state.storefront.promoText = val('vit_promo_text').trim();
     state.storefront.promoBarDisplay = chk('vit_promo_bar_display');
+    state.storefront.promoFaixaDisplay = chk('vit_disp_promo_faixa');
     state.storefront.promoShowDefault = chk('vit_promo_show_default');
     state.storefront.display = {
       heroEyebrow: chk('vit_disp_hero_eye'),
@@ -1668,11 +1694,14 @@
       heroButtons: chk('vit_disp_hero_btns'),
       shopHeader: chk('vit_disp_shop_hdr'),
       footerDesc: chk('vit_disp_footer_desc'),
-      services: chk('vit_disp_services')
+      services: chk('vit_disp_services'),
+      social: chk('vit_disp_social'),
+      promoFaixa: chk('vit_disp_promo_faixa')
     };
     state.storefront.announcement = {
       enabled: chk('vit_ann_on'),
       display: chk('vit_ann_display'),
+      labelDisplay: chk('vit_ann_label_display'),
       showDefault: chk('vit_ann_show_default'),
       marquee: chk('vit_ann_marquee'),
       text: val('vit_ann_text').trim(),
@@ -1739,9 +1768,12 @@
     patch.vitrine_display_shop_header = disp.shopHeader || '1';
     patch.vitrine_display_footer_desc = disp.footerDesc || '1';
     patch.vitrine_display_services = disp.services || '1';
+    patch.vitrine_display_social = disp.social || '1';
+    patch.vitrine_display_promo_faixa = disp.promoFaixa || sf.promoFaixaDisplay || '1';
     var ann = sf.announcement || {};
     patch.announcement_enabled = ann.enabled || '0';
     patch.announcement_display = ann.display || '1';
+    patch.announcement_promo_label_display = ann.labelDisplay || '1';
     patch.announcement_show_default = ann.showDefault || '1';
     patch.announcement_marquee = ann.marquee || '0';
     patch.announcement_text = ann.text || '';
@@ -1817,6 +1849,9 @@
       vitrine_display_shop_header: (sf.display && sf.display.shopHeader) || '1',
       vitrine_display_footer_desc: (sf.display && sf.display.footerDesc) || '1',
       vitrine_display_services: (sf.display && sf.display.services) || '1',
+      vitrine_display_social: (sf.display && sf.display.social) || '1',
+      vitrine_display_promo_faixa: (sf.display && sf.display.promoFaixa) || sf.promoFaixaDisplay || '1',
+      announcement_promo_label_display: (sf.announcement && sf.announcement.labelDisplay) || '1',
       content: sf.content
     };
     var res = await erpCall('updateStorefront', payload);
