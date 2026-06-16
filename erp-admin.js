@@ -683,7 +683,8 @@
       cancelado: o.stCancelled || 'cancelled',
       aguardando_pagamento: o.payPending || 'aguardando',
       pago: o.payPaid || 'pago',
-      pago_stripe: o.payPaid || 'pago'
+      pago_stripe: o.payPaid || 'pago',
+      reembolsado: o.payRefunded || 'reembolsado'
     };
     var k = String(code || '').toLowerCase().trim();
     return map[k] || code || '—';
@@ -711,6 +712,7 @@
       { v: 'pending', l: o.payPending },
       { v: 'pago', l: o.payPaid },
       { v: 'pago_stripe', l: o.payStripe },
+      { v: 'reembolsado', l: o.payRefunded },
       { v: 'paid', l: o.payPaid },
       { v: 'cancelled', l: o.payCancelled }
     ];
@@ -2252,11 +2254,24 @@
         return '<li>' + esc(d.nome_produto || d.produto_id) + ' × ' + esc(d.quantidade) + ' — ' + esc(d.preco) + ' €</li>';
       }).join('');
       if (!lines) lines = '<li class="muted">' + esc(t().noData) + '</li>';
+      var payState = String(ord.estado_pagamento || '').toLowerCase();
+      var stripeBlock = '';
+      if (ord.stripe_payment_intent) {
+        stripeBlock = '<div class="panel" style="margin:12px 0;padding:12px;"><p class="hint-block" style="margin:0 0 8px;"><strong>' + esc(o.stripeTx || 'Stripe') + '</strong> · ' + esc(ord.stripe_payment_intent) + '</p>';
+        if (ord.stripe_dashboard_url) {
+          stripeBlock += '<a class="btn-ghost" style="display:inline-block;margin-right:8px;text-decoration:none;" href="' + esc(ord.stripe_dashboard_url) + '" target="_blank" rel="noopener">' + esc(o.stripeOpen || 'Stripe') + '</a>';
+        }
+        if (payState === 'pago_stripe' || payState === 'pago' || payState === 'paid') {
+          stripeBlock += '<button type="button" class="btn-ghost" style="color:var(--danger,#c44);" onclick="Admin.refundStripeOrder(\'' + esc(orderId).replace(/'/g, "\\'") + '\')">' + esc(o.stripeRefund || 'Rembourser') + '</button>';
+        }
+        stripeBlock += '</div>';
+      }
       var curEst = String(ord.estado || 'pending').toLowerCase();
       if (curEst === 'em_processamento' || curEst === 'preparacao') curEst = 'processing';
       openModal(
         '<div class="modal-inner"><h2>' + esc(o.detail) + ' #' + esc(ord.pedido_id || orderId) + '</h2>' +
         '<p class="hint-block">' + esc(ord.data) + ' · ' + esc(ord.email) + ' · <strong>' + esc(ord.total) + ' €</strong></p>' +
+        stripeBlock +
         '<ul class="order-lines">' + lines + '</ul>' +
         '<div class="field"><label>' + esc(o.status) + '</label><select id="of_estado">' + orderStatusOptions(curEst) + '</select></div>' +
         '<div class="fgrid"><div class="field"><label>' + esc(o.pay) + '</label><select id="of_pay">' + payStatusOptions(ord.estado_pagamento) + '</select></div>' +
@@ -2302,6 +2317,21 @@
       w.document.close();
       w.focus();
       setTimeout(function () { try { w.print(); } catch (e) { /* ignore */ } }, 450);
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
+  }
+
+  async function refundStripeOrder(orderId) {
+    orderId = String(orderId || '').trim();
+    var o = t().ord || {};
+    if (!orderId) return;
+    if (!global.confirm(o.stripeRefundConfirm || 'Rembourser le paiement Stripe ?')) return;
+    try {
+      var res = await erpCall('refundStripePayment', { orderId: orderId });
+      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
+      toast(o.stripeRefundedOk || 'Remboursement effectué', 's');
+      closeModal();
+      await loadOrders();
+      renderOrdersPanel();
     } catch (e) { toast(apiErrMsg(e), 'e'); }
   }
 
@@ -2489,6 +2519,7 @@
     saveCategory: saveCategory,
     removeCategory: removeCategory,
     openOrder: openOrder,
+    refundStripeOrder: refundStripeOrder,
     saveOrder: saveOrder,
     cancelOrder: cancelOrder,
     printOrderInvoice: printOrderInvoice,
