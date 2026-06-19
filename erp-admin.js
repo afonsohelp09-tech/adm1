@@ -204,6 +204,52 @@
 
   var VITRINE_LANGS = ['pt', 'fr', 'en', 'es'];
 
+  function configDisplayVal(st, key) {
+    var v = st && st[key];
+    return v == null || v === '' ? '1' : String(v);
+  }
+
+  function announcementFromSettings(st) {
+    st = st || {};
+    return {
+      enabled: st.announcement_enabled,
+      display: configDisplayVal(st, 'announcement_display'),
+      showDefault: configDisplayVal(st, 'announcement_show_default'),
+      marquee: configDisplayVal(st, 'announcement_marquee'),
+      text: st.announcement_text || '',
+      label: st.announcement_promo_label || '',
+      code: st.announcement_promo_code || '',
+      pct: st.announcement_promo_pct || '',
+      pct2: st.announcement_promo_pct_2 || '',
+      amount: st.announcement_promo_amount_eur || '',
+      minCart: st.announcement_promo_min_cart_eur || '',
+      validUntil: st.announcement_promo_valid_until || '',
+      dateStart: st.announcement_date_start || '',
+      dateEnd: st.announcement_date_end || '',
+      labelDisplay: configDisplayVal(st, 'announcement_promo_label_display'),
+      pctDisplay: configDisplayVal(st, 'announcement_promo_pct_display'),
+      pct2Display: configDisplayVal(st, 'announcement_promo_pct_2_display'),
+      codeDisplay: configDisplayVal(st, 'announcement_promo_code_display'),
+      amountDisplay: configDisplayVal(st, 'announcement_promo_amount_display'),
+      minCartDisplay: configDisplayVal(st, 'announcement_promo_min_cart_display'),
+      validUntilDisplay: configDisplayVal(st, 'announcement_promo_valid_until_display')
+    };
+  }
+
+  function announcementVarDisplayChecks(ann, v) {
+    ann = ann || {};
+    function d(key) { return ann[key] != null ? ann[key] : '1'; }
+    return check('vit_ann_display', v.annDisplay || 'Afficher la campagne sur la vitrine', d('display')) +
+      check('vit_ann_show_default', v.annShowDefault || 'Afficher le repli automatique (✦ CODE : …) si le texte est vide', d('showDefault')) +
+      check('vit_ann_label_display', v.showPromoLabel || 'Afficher {{promo_label}}', d('labelDisplay')) +
+      check('vit_ann_pct_display', v.showPromoPct || 'Afficher {{pct}}', d('pctDisplay')) +
+      check('vit_ann_pct2_display', v.showPromoPct2 || 'Afficher {{pct2}}', d('pct2Display')) +
+      check('vit_ann_code_display', v.showPromoCode || 'Afficher {{code}}', d('codeDisplay')) +
+      check('vit_ann_amount_display', v.showPromoAmount || 'Afficher {{amount}}', d('amountDisplay')) +
+      check('vit_ann_min_cart_display', v.showPromoMinCart || 'Afficher {{min_cart}}', d('minCartDisplay')) +
+      check('vit_ann_valid_until_display', v.showPromoValidUntil || 'Afficher {{valid_until}}', d('validUntilDisplay'));
+  }
+
   function storefrontDisplayFromSettings(st) {
     st = st || {};
     function f(k) {
@@ -814,23 +860,7 @@
       promoText: st.promo_banner_text || '',
       promoBarDisplay: st.promo_bar_display == null || st.promo_bar_display === '' ? '1' : st.promo_bar_display,
       promoShowDefault: st.promo_banner_show_default == null || st.promo_banner_show_default === '' ? '1' : st.promo_banner_show_default,
-      announcement: {
-        enabled: st.announcement_enabled,
-        display: st.announcement_display == null || st.announcement_display === '' ? '1' : st.announcement_display,
-        showDefault: st.announcement_show_default == null || st.announcement_show_default === '' ? '1' : st.announcement_show_default,
-        marquee: st.announcement_marquee == null || st.announcement_marquee === '' ? '1' : st.announcement_marquee,
-        text: st.announcement_text || '',
-        label: st.announcement_promo_label || '',
-        code: st.announcement_promo_code || '',
-        pct: st.announcement_promo_pct || '',
-        pct2: st.announcement_promo_pct_2 || '',
-        amount: st.announcement_promo_amount_eur || '',
-        minCart: st.announcement_promo_min_cart_eur || '',
-        validUntil: st.announcement_promo_valid_until || '',
-        dateStart: st.announcement_date_start || '',
-        dateEnd: st.announcement_date_end || '',
-        labelDisplay: st.announcement_promo_label_display == null || st.announcement_promo_label_display === '' ? '1' : st.announcement_promo_label_display
-      },
+      announcement: announcementFromSettings(st),
       promoFaixaDisplay: st.vitrine_display_promo_faixa == null || st.vitrine_display_promo_faixa === '' ? '1' : st.vitrine_display_promo_faixa,
       display: storefrontDisplayFromSettings(st)
     };
@@ -1387,13 +1417,11 @@
       '<p class="hint-block">' + esc(v.annHint || 'Campanha com datas e variáveis. Se ativa et affichée, tem prioridade sobre a faixa promocional acima.') + '</p>' +
       vitrineDisplaySubPanel(
         v.displayAnnSection || v.annTitle || 'Campanha / Anúncio',
-        v.displayAnnHint || v.displaySectionHint,
-        check('vit_ann_display', v.annDisplay || 'Afficher la campagne sur la vitrine', ann.display != null ? ann.display : '1') +
-        check('vit_ann_label_display', v.showPromoLabel || 'Afficher le titre campagne ({{promo_label}}) dans les textes', ann.labelDisplay != null ? ann.labelDisplay : '1')
+        v.displayAnnVarsHint || v.displayAnnHint || v.displaySectionHint,
+        announcementVarDisplayChecks(ann, v)
       ) +
       check('vit_ann_on', v.annOn || 'Ativar campanha (contenu + dates)', ann.enabled === '1' || ann.enabled === 1 ? '1' : (ann.enabled || '0')) +
       check('vit_ann_marquee', v.annMarquee || 'Texto deslizante (marquee)', ann.marquee) +
-      check('vit_ann_show_default', v.annShowDefault || 'Afficher le repli automatique (code promo) si le texte est vide', ann.showDefault != null ? ann.showDefault : '1') +
       field('vit_ann_text', v.annText || 'Texto do anúncio', ann.text || '', {
         placeholder: '✦ {{promo_label}} · -{{pct}}% COM O CÓDIGO {{code}} ATÉ {{valid_until}} ✦',
         help: v.annTextHelp || 'Variáveis disponíveis: {{pct}}, {{pct2}}, {{code}}, {{amount}}, {{min_cart}}, {{valid_until}}, {{promo_label}}.'
@@ -1704,6 +1732,12 @@
       enabled: chk('vit_ann_on'),
       display: chk('vit_ann_display'),
       labelDisplay: chk('vit_ann_label_display'),
+      pctDisplay: chk('vit_ann_pct_display'),
+      pct2Display: chk('vit_ann_pct2_display'),
+      codeDisplay: chk('vit_ann_code_display'),
+      amountDisplay: chk('vit_ann_amount_display'),
+      minCartDisplay: chk('vit_ann_min_cart_display'),
+      validUntilDisplay: chk('vit_ann_valid_until_display'),
       showDefault: chk('vit_ann_show_default'),
       marquee: chk('vit_ann_marquee'),
       text: val('vit_ann_text').trim(),
@@ -1776,6 +1810,12 @@
     patch.announcement_enabled = ann.enabled || '0';
     patch.announcement_display = ann.display || '1';
     patch.announcement_promo_label_display = ann.labelDisplay || '1';
+    patch.announcement_promo_pct_display = ann.pctDisplay || '1';
+    patch.announcement_promo_pct_2_display = ann.pct2Display || '1';
+    patch.announcement_promo_code_display = ann.codeDisplay || '1';
+    patch.announcement_promo_amount_display = ann.amountDisplay || '1';
+    patch.announcement_promo_min_cart_display = ann.minCartDisplay || '1';
+    patch.announcement_promo_valid_until_display = ann.validUntilDisplay || '1';
     patch.announcement_show_default = ann.showDefault || '1';
     patch.announcement_marquee = ann.marquee || '0';
     patch.announcement_text = ann.text || '';
@@ -1854,6 +1894,12 @@
       vitrine_display_social: (sf.display && sf.display.social) || '1',
       vitrine_display_promo_faixa: (sf.display && sf.display.promoFaixa) || sf.promoFaixaDisplay || '1',
       announcement_promo_label_display: (sf.announcement && sf.announcement.labelDisplay) || '1',
+      announcement_promo_pct_display: (sf.announcement && sf.announcement.pctDisplay) || '1',
+      announcement_promo_pct_2_display: (sf.announcement && sf.announcement.pct2Display) || '1',
+      announcement_promo_code_display: (sf.announcement && sf.announcement.codeDisplay) || '1',
+      announcement_promo_amount_display: (sf.announcement && sf.announcement.amountDisplay) || '1',
+      announcement_promo_min_cart_display: (sf.announcement && sf.announcement.minCartDisplay) || '1',
+      announcement_promo_valid_until_display: (sf.announcement && sf.announcement.validUntilDisplay) || '1',
       content: sf.content
     };
     var res = await erpCall('updateStorefront', payload);
