@@ -1155,10 +1155,19 @@
       check('cfg_cod', c.cod, cfgVal('pay_cod_enabled', '1')) +
       check('cfg_show_stripe', c.showStripe, cfgVal('pay_show_stripe', '1')) +
       check('cfg_show_cod', c.showCod, cfgVal('pay_show_cod', '1')) +
+      check('cfg_transfer', c.transfer || 'Transferência bancária ativa', cfgVal('pay_transfer_enabled', '1')) +
       check('cfg_show_transfer', c.showTransfer, cfgVal('pay_show_transfer', '1')) +
       field('cfg_transfer_iban', c.transferIban || 'IBAN (transferência bancária)', cfgVal('transfer_iban', ''), {
         placeholder: 'PT50 0000 0000 0000 0000 0000 0',
-        help: c.transferIbanHelp || 'Mostrado ao cliente após uma encomenda paga por transferência.'
+        help: c.transferIbanHelp || 'Obrigatório para a opção transferência aparecer no checkout. Mostrado ao cliente após a encomenda.'
+      }) +
+      field('cfg_transfer_holder', c.transferHolder || 'Titular da conta (opcional)', cfgVal('transfer_account_holder', ''), {
+        placeholder: 'AZAVISION Lda',
+        help: c.transferHolderHelp || 'Nome do titular exibido nas instruções de pagamento.'
+      }) +
+      field('cfg_transfer_bank', c.transferBank || 'Banco (opcional)', cfgVal('transfer_bank_name', ''), {
+        placeholder: 'Millennium BCP',
+        help: c.transferBankHelp || 'Nome do banco (opcional) — ajuda o cliente na transferência.'
       }) +
       check('cfg_show_mbway', c.showMbway || 'Mostrar MB Way', cfgVal('pay_show_mbway', '0')) +
       field('cfg_mbway_phone', c.mbwayPhone || 'Número MB Way', cfgVal('pay_mbway_phone', ''), {
@@ -1166,10 +1175,13 @@
         help: c.mbwayPhoneHelp || 'Obrigatório para a opção MB Way aparecer no checkout.'
       }) +
       check('cfg_show_paypal', c.showPaypal || 'Mostrar PayPal', cfgVal('pay_show_paypal', '0')) +
+      check('cfg_paypal', c.paypal || 'PayPal ativo', cfgVal('pay_paypal_enabled', '0')) +
       field('cfg_paypal_me', c.paypalMe || 'Ligação PayPal.Me', cfgVal('pay_paypal_me', ''), {
         placeholder: 'paypal.me/asualoja',
         help: c.paypalMeHelp || 'Obrigatório para a opção PayPal aparecer no checkout (ligação PayPal.Me).'
       }) +
+      check('cfg_show_whatsapp', c.showWhatsapp || 'Mostrar pagamento WhatsApp', cfgVal('pay_show_whatsapp', '1')) +
+      '<p class="field-help">' + esc(c.showWhatsappHelp || 'Utiliza o número WhatsApp definido em Contacto (cfg_whatsapp).') + '</p>' +
       check('cfg_guest_checkout', c.guestCheckout || 'Permitir compra sem conta (convidado)', cfgVal('guest_checkout_enabled', '1')) +
       '</section>' +
       '<section class="panel"><h2>' + esc(c.promo) + '</h2>' +
@@ -1183,7 +1195,7 @@
       field('cfg_contact_email', c.publicEmail, cfgVal('contact_public_email', '')) +
       field('cfg_phone', c.phone || 'Telefone (reclamações)', cfgVal('contact_phone', '')) +
       field('cfg_whatsapp', c.whatsapp, cfgVal('contact_whatsapp', '')) +
-      field('cfg_lang', c.lang, cfgVal('default_lang', 'pt')) +
+      field('cfg_lang', c.lang, cfgVal('default_lang', cfgVal('boutique_default_lang', 'pt'))) +
       '</section>' +
       '<section class="panel"><h2>' + esc(c.fiscal || 'Facturação (Facturalusa)') + '</h2>' +
       '<p class="field-help">' + esc(c.fiscalHint || 'Clé API depuis facturalusa.pt → Mon compte → API. La clé secrète Stripe (sk_…) se configure dans Google Apps Script → Propriétés du script.') + '</p>' +
@@ -2444,12 +2456,17 @@
       pay_cod_enabled: chk('cfg_cod'),
       pay_show_stripe: chk('cfg_show_stripe'),
       pay_show_cod: chk('cfg_show_cod'),
+      pay_transfer_enabled: chk('cfg_transfer'),
       pay_show_transfer: chk('cfg_show_transfer'),
-      transfer_iban: val('cfg_transfer_iban'),
+      transfer_iban: val('cfg_transfer_iban').replace(/\s+/g, ' ').trim(),
+      transfer_account_holder: val('cfg_transfer_holder'),
+      transfer_bank_name: val('cfg_transfer_bank'),
       pay_show_mbway: chk('cfg_show_mbway'),
       pay_mbway_phone: val('cfg_mbway_phone'),
+      pay_paypal_enabled: chk('cfg_paypal'),
       pay_show_paypal: chk('cfg_show_paypal'),
       pay_paypal_me: val('cfg_paypal_me'),
+      pay_show_whatsapp: chk('cfg_show_whatsapp'),
       guest_checkout_enabled: chk('cfg_guest_checkout'),
       promo_banner_enabled: chk('cfg_promo_on'),
       promo_bar_display: chk('cfg_promo_bar_display'),
@@ -2460,6 +2477,7 @@
       contact_phone: val('cfg_phone'),
       contact_whatsapp: val('cfg_whatsapp'),
       default_lang: val('cfg_lang'),
+      boutique_default_lang: val('cfg_lang'),
       fiscal_provider: val('cfg_fiscal_provider'),
       fiscal_enabled: chk('cfg_fiscal_enabled'),
       fiscal_emit_on_payment: chk('cfg_fiscal_emit'),
@@ -2469,11 +2487,14 @@
     if (fiscalKey) patch.fiscal_api_key = fiscalKey;
     try {
       var res = await erpCall('updateConfig', patch);
-      if (!res || !res.success) { toast(t().error, 'e'); return; }
+      if (!res || !res.success) {
+        toast((res && res.error) || t().error, 'e');
+        return;
+      }
       toast(t().saved, 's');
       await loadConfig();
       renderMain();
-    } catch (e) { toast(e.message, 'e'); }
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
   }
 
   function val(id) { var el = $(id); return el ? el.value : ''; }
