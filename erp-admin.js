@@ -59,6 +59,8 @@
   var storefrontAutosaveDirty = false;
   var storefrontAutosaveInFlight = false;
   var storefrontAutosaveQueued = false;
+  var loginInFlight = false;
+  var sessionEstablishedAt = 0;
 
   var VITRINE_LANGS = ['pt', 'fr', 'en', 'es'];
   var VITRINE_SVC_COUNT = 4;
@@ -140,6 +142,31 @@
     }
   };
 
+  function storageGet(key) {
+    try {
+      var v = localStorage.getItem(key);
+      if (v != null && v !== '') return v;
+    } catch (e) { /* ignore */ }
+    try {
+      return sessionStorage.getItem(key) || '';
+    } catch (e2) { return ''; }
+  }
+
+  function storageSet(key, val) {
+    try {
+      if (val) localStorage.setItem(key, val);
+      else localStorage.removeItem(key);
+    } catch (e) { /* ignore */ }
+    try {
+      if (val) sessionStorage.setItem(key, val);
+      else sessionStorage.removeItem(key);
+    } catch (e2) { /* ignore */ }
+  }
+
+  function storageRemove(key) {
+    storageSet(key, '');
+  }
+
   function $(id) { return document.getElementById(id); }
   function t() { return (global.AdminT && global.AdminT[state.lang]) || global.AdminT.pt; }
 
@@ -171,7 +198,7 @@
     });
     if (!res.ok) throw new Error('HTTP ' + res.status);
     var json = await res.json();
-    if (!opts._noRetry && isNoAuthResponse(json) && state.token && action !== 'adminLogin' && action !== 'validateToken') {
+    if (!opts._noRetry && isNoAuthResponse(json) && state.token && action !== 'adminLogin' && action !== 'validateToken' && action !== 'refreshAdminToken') {
       try {
         var refreshed = await erpCall('refreshAdminToken', {}, { _noRetry: true });
         if (refreshed && refreshed.success) {
@@ -550,22 +577,22 @@
 
   function loadSession() {
     try {
-      state.token = localStorage.getItem(LS_TOKEN) || '';
-      state.user = JSON.parse(localStorage.getItem(LS_USER) || 'null');
-      var lg = localStorage.getItem(LS_LANG);
+      state.token = storageGet(LS_TOKEN) || '';
+      state.user = JSON.parse(storageGet(LS_USER) || 'null');
+      var lg = storageGet(LS_LANG);
       if (lg && global.AdminT[lg]) state.lang = lg;
-      var th = localStorage.getItem(LS_THEME);
+      var th = storageGet(LS_THEME);
       if (th === 'light' || th === 'dark') state.theme = th;
     } catch (e) { state.user = null; }
     applyTheme(state.theme);
   }
 
   function saveSession() {
-    if (state.token) localStorage.setItem(LS_TOKEN, state.token);
-    else localStorage.removeItem(LS_TOKEN);
-    if (state.user) localStorage.setItem(LS_USER, JSON.stringify(state.user));
-    else localStorage.removeItem(LS_USER);
-    localStorage.setItem(LS_LANG, state.lang);
+    if (state.token) storageSet(LS_TOKEN, state.token);
+    else storageRemove(LS_TOKEN);
+    if (state.user) storageSet(LS_USER, JSON.stringify(state.user));
+    else storageRemove(LS_USER);
+    storageSet(LS_LANG, state.lang);
   }
 
   function updateScrollLock() {
@@ -640,10 +667,12 @@
     updateScrollLock();
   }
 
-  async function validateAdmin() {
+  async function validateAdmin(opts) {
+    opts = opts || {};
     if (!state.token || !apiOk()) return false;
+    if (opts.trustSession && state.user) return true;
     try {
-      var v = await erpCall('validateToken', {});
+      var v = await erpCall('validateToken', {}, { _noRetry: true });
       if (!v || !v.success || v.type !== 'admin') {
         logout(true);
         return false;
@@ -655,34 +684,62 @@
       saveSession();
       return true;
     } catch (e) {
+      if (opts.trustSession || (sessionEstablishedAt && (Date.now() - sessionEstablishedAt) < 120000)) {
+        return !!(state.user && state.token);
+      }
       return false;
     }
   }
 
+  async function refreshAdminSessionQuiet() {
+    if (!state.token || !apiOk()) return;
+    try {
+      await erpCall('refreshAdminToken', {}, { _noRetry: true });
+    } catch (eRef) { /* ignore */ }
+  }
+
+  function loginDeviceLabel() {
+    var ua = String(navigator.userAgent || '');
+    if (/iPhone|iPad|iPod/i.test(ua)) return 'iPhone/iPad';
+    if (/Android/i.test(ua)) return 'Android';
+    if (/Mobi/i.test(ua)) return 'mobile';
+    return 'desktop';
+  }
+
   async function login() {
+    if (loginInFlight) return;
     var a = t();
     var email = ($('loginEmail') && $('loginEmail').value || '').trim();
     var pass = ($('loginPass') && $('loginPass').value) || '';
     if (!email || !pass) { toast(a.noData, 'e'); return; }
+    loginInFlight = true;
+    var btn = document.querySelector('.login-card .btn-primary');
+    if (btn) { btn.disabled = true; btn.setAttribute('aria-busy', 'true'); }
     try {
-      var res = await erpCall('adminLogin', { email: email, password: pass });
+      var res = await erpCall('adminLogin', { email: email, password: pass, device: loginDeviceLabel() });
       if (!res || !res.success) {
         toast((res && res.error) || a.error, 'e');
         return;
       }
       state.token = res.token;
       state.user = res.user;
+      sessionEstablishedAt = Date.now();
       saveSession();
       toast(a.connected, 's');
-      await initApp();
+      await initApp({ trustSession: true });
+      render();
     } catch (e) {
       toast(e.message === 'API_URL' ? a.apiBanner.replace(/<[^>]+>/g, '') : e.message, 'e');
+    } finally {
+      loginInFlight = false;
+      if (btn) { btn.disabled = false; btn.removeAttribute('aria-busy'); }
     }
   }
 
   function logout(silent) {
     state.token = '';
     state.user = null;
+    sessionEstablishedAt = 0;
     saveSession();
     if (!silent) toast(t().logout, 'i');
     render();
@@ -2972,23 +3029,29 @@
     if ($('apiBanner')) $('apiBanner').style.display = apiOk() ? 'none' : 'block';
   }
 
-  async function initApp() {
-    var ok = await validateAdmin();
+  async function initApp(opts) {
+    opts = opts || {};
+    var ok = await validateAdmin(opts);
     if (!ok) return;
     renderShell();
     loadViewData();
     loadCategories().catch(function () { /* catégories en arrière-plan */ });
+    if (!opts.trustSession) refreshAdminSessionQuiet();
+    else setTimeout(refreshAdminSessionQuiet, 800);
   }
 
   async function init() {
     loadSession();
     global.addEventListener('pagehide', flushStorefrontAutosave);
+    document.addEventListener('visibilitychange', function () {
+      if (document.visibilityState === 'visible' && state.token) refreshAdminSessionQuiet();
+    });
     if ($('apiBanner')) {
       $('apiBanner').innerHTML = t().apiBanner;
       $('apiBanner').style.display = apiOk() ? 'none' : 'block';
     }
     if (state.token && apiOk()) await initApp();
-    else render();
+    render();
   }
 
   global.Admin = {
