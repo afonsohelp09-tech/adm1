@@ -60,6 +60,35 @@
   var storefrontAutosaveInFlight = false;
   var storefrontAutosaveQueued = false;
 
+  var VITRINE_LANGS = ['pt', 'fr', 'en', 'es'];
+  var VITRINE_SVC_COUNT = 4;
+  var VITRINE_SVC_EXAMPLES = {
+    fr: [
+      { t: 'Livraison express offerte', d: 'Dès 150 € via DHL Express en 48 h.' },
+      { t: 'Retours faciles', d: 'Prise en charge à domicile gratuite sous 30 jours.' },
+      { t: 'Paiement sécurisé', d: 'SSL 256 bits · Visa · Mastercard · Apple Pay.' },
+      { t: 'Atelier durable', d: 'Fibres nobles, organiques et emballages recyclés.' }
+    ],
+    pt: [
+      { t: 'Envio expresso grátis', d: 'A partir de 150 € via DHL Express em 48 h.' },
+      { t: 'Devoluções fáceis', d: 'Recolha gratuita ao domicílio em 30 dias.' },
+      { t: 'Pagamento seguro', d: 'SSL 256 bits · Visa · Mastercard · MB Way.' },
+      { t: 'Atelier sustentável', d: 'Fibras nobres orgânicas e embalagens ecológicas.' }
+    ],
+    en: [
+      { t: 'Free express shipping', d: 'From €150 via DHL Express in 48 h.' },
+      { t: 'Easy returns', d: 'Free home pickup within 30 days.' },
+      { t: 'Secure payment', d: 'TLS 1.3 · Visa · Mastercard · Apple Pay.' },
+      { t: 'Sustainable atelier', d: 'Noble organic fibres and eco packaging.' }
+    ],
+    es: [
+      { t: 'Envío express gratuito', d: 'Desde 150 € vía DHL Express en 48 h.' },
+      { t: 'Devoluciones fáciles', d: 'Recogida gratuita a domicilio en 30 días.' },
+      { t: 'Pago seguro', d: 'SSL 256 bits · Visa · Mastercard · Apple Pay.' },
+      { t: 'Taller sostenible', d: 'Fibras nobles orgánicas y envases ecológicos.' }
+    ]
+  };
+
   var VITRINE_TEXT_EXAMPLES = {
     fr: {
       hEye: 'HAUTE COUTURE · COLLECTION SIGNATURE 2026',
@@ -212,35 +241,6 @@
   function isUnknownActionError(msg) {
     return /desconhecida|unknown|inconnu|desconocida|inconnue|em falta|ausente|missing/i.test(String(msg || ''));
   }
-
-  var VITRINE_LANGS = ['pt', 'fr', 'en', 'es'];
-  var VITRINE_SVC_COUNT = 4;
-  var VITRINE_SVC_EXAMPLES = {
-    fr: [
-      { t: 'Livraison express offerte', d: 'Dès 150 € via DHL Express en 48 h.' },
-      { t: 'Retours faciles', d: 'Prise en charge à domicile gratuite sous 30 jours.' },
-      { t: 'Paiement sécurisé', d: 'SSL 256 bits · Visa · Mastercard · Apple Pay.' },
-      { t: 'Atelier durable', d: 'Fibres nobles, organiques et emballages recyclés.' }
-    ],
-    pt: [
-      { t: 'Envio expresso grátis', d: 'A partir de 150 € via DHL Express em 48 h.' },
-      { t: 'Devoluções fáceis', d: 'Recolha gratuita ao domicílio em 30 dias.' },
-      { t: 'Pagamento seguro', d: 'SSL 256 bits · Visa · Mastercard · MB Way.' },
-      { t: 'Atelier sustentável', d: 'Fibras nobres orgânicas e embalagens ecológicas.' }
-    ],
-    en: [
-      { t: 'Free express shipping', d: 'From €150 via DHL Express in 48 h.' },
-      { t: 'Easy returns', d: 'Free home pickup within 30 days.' },
-      { t: 'Secure payment', d: 'TLS 1.3 · Visa · Mastercard · Apple Pay.' },
-      { t: 'Sustainable atelier', d: 'Noble organic fibres and eco packaging.' }
-    ],
-    es: [
-      { t: 'Envío express gratuito', d: 'Desde 150 € vía DHL Express en 48 h.' },
-      { t: 'Devoluciones fáciles', d: 'Recogida gratuita a domicilio en 30 días.' },
-      { t: 'Pago seguro', d: 'SSL 256 bits · Visa · Mastercard · Apple Pay.' },
-      { t: 'Taller sostenible', d: 'Fibras nobles orgánicas y envases ecológicos.' }
-    ]
-  };
 
   function configDisplayVal(st, key) {
     var v = st && st[key];
