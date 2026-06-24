@@ -46,7 +46,14 @@
     vitrineGalleryOpen: '',
     vitrineGalleryImages: [],
     vitrineGalleryLoading: false,
-    adminUsers: []
+    adminUsers: [],
+    reviews: [],
+    reviewFilter: 'pendente',
+    returns: [],
+    returnFilter: '',
+    empresa: {},
+    orderPageSize: 100,
+    orderHasMore: false
   };
   var storefrontAutosaveTimer = 0;
   var storefrontAutosaveDirty = false;
@@ -63,7 +70,8 @@
       shopLabel: 'Notre sélection',
       shopTitle: 'Collections exclusives',
       fDesc: 'Notre maison réinterprète les grands basiques du vestiaire parisien avec transparence et responsabilité.',
-      promoText: '✦ LIVRAISON OFFERTE DÈS 150 € · RETOURS 30 JOURS GRATUITS · CODE : BIENVENUE10 (-10 %) ✦'
+      promoText: '✦ LIVRAISON OFFERTE DÈS 150 € · RETOURS 30 JOURS GRATUITS · CODE : BIENVENUE10 (-10 %) ✦',
+      svc: VITRINE_SVC_EXAMPLES.fr
     },
     pt: {
       hEye: 'ALTA COSTURA · COLEÇÃO SIGNATURE 2026',
@@ -74,7 +82,8 @@
       shopLabel: 'A nossa seleção',
       shopTitle: 'Coleções exclusivas',
       fDesc: 'Reinterpretamos o guarda-roupa essencial com transparência e respeito pelas matérias nobres.',
-      promoText: '✦ ENVIO GRÁTIS A PARTIR DE 150 € · DEVOLUÇÕES 30 DIAS GRÁTIS · CÓDIGO: BIENVENUE10 (-10 %) ✦'
+      promoText: '✦ ENVIO GRÁTIS A PARTIR DE 150 € · DEVOLUÇÕES 30 DIAS GRÁTIS · CÓDIGO: BIENVENUE10 (-10 %) ✦',
+      svc: VITRINE_SVC_EXAMPLES.pt
     },
     en: {
       hEye: 'HAUTE COUTURE · SIGNATURE COLLECTION 2026',
@@ -85,7 +94,8 @@
       shopLabel: 'Our selection',
       shopTitle: 'Exclusive collections',
       fDesc: 'We reinterpret Parisian wardrobe essentials with transparency and care for noble materials.',
-      promoText: '✦ FREE SHIPPING FROM €150 · FREE 30-DAY RETURNS · CODE: BIENVENUE10 (-10 %) ✦'
+      promoText: '✦ FREE SHIPPING FROM €150 · FREE 30-DAY RETURNS · CODE: BIENVENUE10 (-10 %) ✦',
+      svc: VITRINE_SVC_EXAMPLES.en
     },
     es: {
       hEye: 'ALTA COSTURA · COLECCIÓN SIGNATURE 2026',
@@ -96,7 +106,8 @@
       shopLabel: 'Nuestra selección',
       shopTitle: 'Colecciones exclusivas',
       fDesc: 'Reinterpretamos los básicos del armario parisino con transparencia y respeto por las materias nobles.',
-      promoText: '✦ ENVÍO GRATIS DESDE 150 € · DEVOLUCIONES 30 DÍAS GRATIS · CÓDIGO: BIENVENUE10 (-10 %) ✦'
+      promoText: '✦ ENVÍO GRATIS DESDE 150 € · DEVOLUCIONES 30 DÍAS GRATIS · CÓDIGO: BIENVENUE10 (-10 %) ✦',
+      svc: VITRINE_SVC_EXAMPLES.es
     }
   };
 
@@ -156,7 +167,7 @@
   }
 
   /* Vues accessibles au rôle « staff » ; les administrateurs ont tout. */
-  var STAFF_ALLOWED_VIEWS = ['dashboard', 'products', 'orders', 'categories', 'clients', 'coupons'];
+  var STAFF_ALLOWED_VIEWS = ['dashboard', 'products', 'orders', 'reviews', 'returns', 'categories', 'clients', 'coupons'];
 
   function canAccessView(view) {
     if (isAdminUser()) return true;
@@ -203,6 +214,33 @@
   }
 
   var VITRINE_LANGS = ['pt', 'fr', 'en', 'es'];
+  var VITRINE_SVC_COUNT = 4;
+  var VITRINE_SVC_EXAMPLES = {
+    fr: [
+      { t: 'Livraison express offerte', d: 'Dès 150 € via DHL Express en 48 h.' },
+      { t: 'Retours faciles', d: 'Prise en charge à domicile gratuite sous 30 jours.' },
+      { t: 'Paiement sécurisé', d: 'SSL 256 bits · Visa · Mastercard · Apple Pay.' },
+      { t: 'Atelier durable', d: 'Fibres nobles, organiques et emballages recyclés.' }
+    ],
+    pt: [
+      { t: 'Envio expresso grátis', d: 'A partir de 150 € via DHL Express em 48 h.' },
+      { t: 'Devoluções fáceis', d: 'Recolha gratuita ao domicílio em 30 dias.' },
+      { t: 'Pagamento seguro', d: 'SSL 256 bits · Visa · Mastercard · MB Way.' },
+      { t: 'Atelier sustentável', d: 'Fibras nobres orgânicas e embalagens ecológicas.' }
+    ],
+    en: [
+      { t: 'Free express shipping', d: 'From €150 via DHL Express in 48 h.' },
+      { t: 'Easy returns', d: 'Free home pickup within 30 days.' },
+      { t: 'Secure payment', d: 'TLS 1.3 · Visa · Mastercard · Apple Pay.' },
+      { t: 'Sustainable atelier', d: 'Noble organic fibres and eco packaging.' }
+    ],
+    es: [
+      { t: 'Envío express gratuito', d: 'Desde 150 € vía DHL Express en 48 h.' },
+      { t: 'Devoluciones fáciles', d: 'Recogida gratuita a domicilio en 30 días.' },
+      { t: 'Pago seguro', d: 'SSL 256 bits · Visa · Mastercard · Apple Pay.' },
+      { t: 'Taller sostenible', d: 'Fibras nobles orgánicas y envases ecológicos.' }
+    ]
+  };
 
   function configDisplayVal(st, key) {
     var v = st && st[key];
@@ -263,9 +301,30 @@
       shopHeader: f('vitrine_display_shop_header'),
       footerDesc: f('vitrine_display_footer_desc'),
       services: f('vitrine_display_services'),
+      svcItems: storefrontSvcDisplayFromSettings(st),
       social: f('vitrine_display_social'),
       promoFaixa: f('vitrine_display_promo_faixa')
     };
+  }
+
+  function storefrontSvcDisplayFromSettings(st) {
+    st = st || {};
+    var out = [];
+    for (var i = 0; i < VITRINE_SVC_COUNT; i++) {
+      out.push(st['vitrine_display_svc' + i] == null || st['vitrine_display_svc' + i] === '' ? '1' : String(st['vitrine_display_svc' + i]));
+    }
+    return out;
+  }
+
+  function buildSvcContentFromSettings(st, lg) {
+    var svc = [];
+    for (var i = 0; i < VITRINE_SVC_COUNT; i++) {
+      svc.push({
+        t: String(st['vitrine_svc' + i + '_title_' + lg] || '').trim(),
+        d: String(st['vitrine_svc' + i + '_desc_' + lg] || '').trim()
+      });
+    }
+    return svc;
   }
 
   function buildStorefrontContentFromSettings(st) {
@@ -279,7 +338,8 @@
         hBtn2: String(st['vitrine_hero_btn2_' + lg] || '').trim(),
         shopLabel: String(st['vitrine_shop_label_' + lg] || '').trim(),
         shopTitle: String(st['vitrine_shop_title_' + lg] || '').trim(),
-        fDesc: String(st['vitrine_footer_desc_' + lg] || st.boutique_footer_tagline || '').trim()
+        fDesc: String(st['vitrine_footer_desc_' + lg] || st.boutique_footer_tagline || '').trim(),
+        svc: buildSvcContentFromSettings(st, lg)
       };
     });
     return content;
@@ -650,9 +710,14 @@
         ]);
       }
       else if (state.view === 'categories') await loadCategories();
-      else if (state.view === 'orders') await loadOrders();
+      else if (state.view === 'orders') await loadOrders(false);
+      else if (state.view === 'reviews') await loadReviews();
+      else if (state.view === 'returns') await loadReturns();
       else if (state.view === 'clients') await loadClients();
-      else if (state.view === 'config') await loadConfig();
+      else if (state.view === 'config') {
+        await loadConfig();
+        await loadEmpresa();
+      }
       else if (state.view === 'vitrine') await loadStorefront();
       else if (state.view === 'team') await loadAdminUsers();
       else if (state.view === 'coupons') {
@@ -792,20 +857,62 @@
     return html;
   }
 
-  async function loadOrders() {
-    var filters = { limit: 300 };
+  async function loadOrders(append) {
+    var filters = { limit: state.orderPageSize || 100 };
+    if (append && state.orders.length) filters.offset = state.orders.length;
     if (state.orderFilter) filters.status = state.orderFilter;
     if (state.orderSearch) filters.search = state.orderSearch;
     var res = await erpCall('getOrders', filters);
     if (!res || !res.success) {
-      state.orders = [];
-      state.ordersTotal = 0;
-      state.ordersError = (res && res.error) ? String(res.error) : t().error;
+      if (!append) {
+        state.orders = [];
+        state.ordersTotal = 0;
+        state.ordersError = (res && res.error) ? String(res.error) : t().error;
+      }
+      state.orderHasMore = false;
       return;
     }
     state.ordersError = '';
-    state.orders = res.orders || [];
+    var rows = res.orders || [];
+    state.orders = append ? state.orders.concat(rows) : rows;
     state.ordersTotal = res.total != null ? res.total : state.orders.length;
+    state.orderHasMore = state.orders.length < state.ordersTotal;
+  }
+
+  async function loadMoreOrders() {
+    if (!state.orderHasMore || state.loading) return;
+    state.loading = true;
+    renderMain();
+    try {
+      await loadOrders(true);
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
+    state.loading = false;
+    renderOrdersPanel();
+  }
+
+  async function loadReviews() {
+    var filters = {};
+    if (state.reviewFilter && state.reviewFilter !== 'all') filters.estado = state.reviewFilter;
+    var res = await erpCall('getAdminReviews', filters);
+    state.reviews = (res && res.success && res.reviews) ? res.reviews : [];
+  }
+
+  async function loadReturns() {
+    var filters = {};
+    if (state.returnFilter) filters.status = state.returnFilter;
+    var res = await erpCall('getReturns', filters);
+    state.returns = (res && res.success && res.returns) ? res.returns : [];
+  }
+
+  async function loadEmpresa() {
+    if (!isAdminUser()) {
+      state.empresa = {};
+      return;
+    }
+    try {
+      var res = await erpCall('getEmpresa', {});
+      state.empresa = (res && res.success && res.empresa) ? res.empresa : {};
+    } catch (e) { state.empresa = {}; }
   }
 
   function orderStatusBadge(ord) {
@@ -840,6 +947,12 @@
     var st = res.settings || {};
     var content = res.content || {};
     if (!content || !Object.keys(content).length) content = buildStorefrontContentFromSettings(st);
+    else {
+      VITRINE_LANGS.forEach(function (lg) {
+        if (!content[lg]) content[lg] = {};
+        if (!content[lg].svc || !content[lg].svc.length) content[lg].svc = buildSvcContentFromSettings(st, lg);
+      });
+    }
     var social = res.social || {};
     if (!social || !Object.keys(social).length) social = buildStorefrontSocialFromSettings(st);
     state.storefront = {
@@ -892,6 +1005,8 @@
       { id: 'dashboard', label: n.dashboard },
       { id: 'products', label: n.products },
       { id: 'orders', label: n.orders },
+      { id: 'reviews', label: n.reviews },
+      { id: 'returns', label: n.returns },
       { id: 'categories', label: n.categories },
       { id: 'clients', label: n.clients },
       { id: 'vitrine', label: n.vitrine },
@@ -908,6 +1023,8 @@
       products: t().prod.title,
       categories: t().cat.title,
       orders: t().ord.title,
+      reviews: (t().rev && t().rev.title) || 'Reviews',
+      returns: (t().ret && t().ret.title) || 'Returns',
       clients: t().cli.title,
       vitrine: (t().vit && t().vit.title) || 'Vitrine',
       team: (t().team && t().team.title) || 'Team',
@@ -1022,6 +1139,8 @@
     else if (state.view === 'products') main.innerHTML = proApi ? proApi.renderProducts() : renderProducts();
     else if (state.view === 'categories') main.innerHTML = renderCategories();
     else if (state.view === 'orders') main.innerHTML = renderOrders();
+    else if (state.view === 'reviews') main.innerHTML = renderReviews();
+    else if (state.view === 'returns') main.innerHTML = renderReturns();
     else if (state.view === 'clients') main.innerHTML = renderClients();
     else if (state.view === 'vitrine') main.innerHTML = renderVitrine();
     else if (state.view === 'team') main.innerHTML = renderTeam();
@@ -1099,7 +1218,8 @@
   function renderOrders() {
     var o = t().ord;
     var err = state.ordersError ? '<p class="api-warn">' + esc(state.ordersError) + '</p>' : '';
-    var countHint = state.orders.length ? '<p class="hint-block">' + state.orders.length + (state.ordersTotal > state.orders.length ? ' / ' + state.ordersTotal : '') + '</p>' : '';
+    var countHint = state.orders.length ? '<p class="hint-block">' + state.orders.length + (state.ordersTotal > state.orders.length ? ' / ' + state.ordersTotal + ' ' + (o.showing || '') : '') + '</p>' : '';
+    var moreBtn = state.orderHasMore ? '<div class="toolbar" style="margin-top:12px;"><button type="button" class="btn-ghost" onclick="Admin.loadMoreOrders()">' + esc(o.loadMore || 'Load more') + '</button></div>' : '';
     return err + countHint + '<div class="toolbar">' +
       '<input class="search-in" placeholder="' + esc(t().search) + '" value="' + esc(state.orderSearch) + '" oninput="Admin.setOrderSearch(this.value)"/>' +
       '<select class="select-in" onchange="Admin.setOrderFilter(this.value)">' +
@@ -1119,7 +1239,7 @@
         return '<tr><td><strong>' + esc(ord.pedido_id) + '</strong></td><td>' + esc(ord.data) + '</td><td>' + esc(ord.email || ord.cliente_id) + '</td><td>' + esc(ord.total) + ' €</td><td>' + orderStatusBadge(ord) + '</td>' +
           '<td class="actions"><button type="button" class="btn-sm" onclick="Admin.openOrder(\'' + oid + '\')">' + esc(t().edit) + '</button></td></tr>';
       }).join('') : '<tr><td colspan="6" class="muted">' + esc(state.ordersError || t().noData) + '</td></tr>') +
-      '</tbody></table></div>';
+      '</tbody></table></div>' + moreBtn;
   }
 
   var CLIENTS_RENDER_MAX = 200;
@@ -1207,7 +1327,36 @@
       }) +
       field('cfg_fiscal_doc_type', c.fiscalDocType || 'Type de document', cfgVal('fiscal_doc_type', 'Factura Recibo')) +
       '</section>' +
+      (isAdminUser() ? renderEmpresaSection() : '') +
       '<button type="submit" class="btn-primary wide">' + esc(t().save) + '</button></form>';
+  }
+
+  function renderEmpresaSection() {
+    var e = t().emp || {};
+    var emp = state.empresa || {};
+    function ev(key, def) {
+      var v = emp[key];
+      return v == null || v === '' ? (def || '') : v;
+    }
+    return '<section class="panel"><h2>' + esc(e.title || 'Entreprise') + '</h2>' +
+      '<p class="hint-block">' + esc(e.subtitle || '') + '</p>' +
+      field('emp_nome', e.name || 'Nom', ev('nome', '')) +
+      field('emp_nif', e.nif || 'NIF', ev('nif', '')) +
+      '<div class="fgrid">' +
+      field('emp_email', e.email || 'E-mail', ev('email', '')) +
+      field('emp_telefone', e.phone || 'Téléphone', ev('telefone', '')) +
+      '</div>' +
+      field('emp_morada', e.address || 'Adresse', ev('morada', '')) +
+      '<div class="fgrid">' +
+      field('emp_cidade', e.city || 'Ville', ev('cidade', '')) +
+      field('emp_pais', e.country || 'Pays', ev('pais', 'Portugal')) +
+      '</div>' +
+      '<div class="fgrid">' +
+      field('emp_website', e.website || 'Site', ev('website', '')) +
+      field('emp_moeda', e.currency || 'Devise', ev('moeda', 'EUR')) +
+      '</div>' +
+      field('emp_tva_padrao', e.vat || 'TVA %', ev('tva_padrao', '23')) +
+      '</section>';
   }
 
   function field(id, label, val, opts) {
@@ -1301,9 +1450,39 @@
       check('vit_disp_hero_sub', v.showHeroSub || 'Sous-titre hero', d.heroSub) +
       check('vit_disp_hero_btns', v.showHeroButtons || 'Boutons hero', d.heroButtons) +
       check('vit_disp_shop_hdr', v.showShopHeader || 'Titre section boutique', d.shopHeader) +
-      check('vit_disp_footer_desc', v.showFooterDesc || 'Description pied de page', d.footerDesc) +
-      check('vit_disp_services', v.showServices || 'Bandeau services (4 infos)', d.services)
+      check('vit_disp_footer_desc', v.showFooterDesc || 'Description pied de page', d.footerDesc)
     );
+  }
+
+  function vitrineServicesPanel() {
+    var v = t().vit || {};
+    var d = (state.storefront && state.storefront.display) || storefrontDisplayFromSettings((state.storefront && state.storefront.settings) || state.config || {});
+    var svcDisp = d.svcItems || storefrontSvcDisplayFromSettings((state.storefront && state.storefront.settings) || state.config || {});
+    var exPt = (VITRINE_SVC_EXAMPLES.pt || []);
+    var checks = check('vit_disp_services', v.showServices || 'Afficher toute la section services (4 blocs)', d.services);
+    for (var i = 0; i < VITRINE_SVC_COUNT; i++) {
+      var hint = (exPt[i] && exPt[i].t) ? exPt[i].t : ('Info ' + (i + 1));
+      checks += check('vit_disp_svc' + i, (v.showSvcItem || 'Afficher sur la vitrine') + ' : ' + hint, svcDisp[i]);
+    }
+    return '<section class="panel"><h2>' + esc(v.servicesSection || 'Bandeau services (4 infos)') + '</h2>' +
+      '<p class="hint-block">' + esc(v.servicesSectionHint || 'Décochez pour masquer une information sur la page client. Les textes se modifient par langue (onglets PT/FR/EN/ES) dans la section Textes.') + '</p>' +
+      '<div class="check-grid">' + checks + '</div></section>';
+  }
+
+  function vitrineServicesLangFields(c, ex) {
+    var v = t().vit || {};
+    var html = '<div class="panel-sub" style="margin-top:18px"><h3 style="margin:0 0 12px;font-size:11px;letter-spacing:1px;text-transform:uppercase;color:var(--gold)">' +
+      esc(v.servicesTextsSection || 'Textes du bandeau services (4 infos)') + '</h3>' +
+      '<p class="field-help" style="margin-bottom:12px">' + esc(v.servicesTextsHint || 'Ex. : Envio expresso grátis / Devoluções fáceis — laissez vide pour utiliser le texte par défaut de la vitrine.') + '</p>';
+    for (var i = 0; i < VITRINE_SVC_COUNT; i++) {
+      var svcEx = (ex.svc && ex.svc[i]) || {};
+      var cur = (c.svc && c.svc[i]) || {};
+      html += '<p class="field-help" style="margin:14px 0 6px;font-weight:600">' + esc((v.svcBlock || 'Information') + ' ' + (i + 1)) + '</p>';
+      html += field('vit_svc' + i + '_title', v.svcTitle || 'Titre affiché', cur.t || '', { placeholder: svcEx.t || '', help: vitrineExampleHelp(svcEx.t) });
+      html += field('vit_svc' + i + '_desc', v.svcDesc || 'Description', cur.d || '', { placeholder: svcEx.d || '', help: vitrineExampleHelp(svcEx.d) });
+    }
+    html += '</div>';
+    return html;
   }
 
   function vitrineLangBlock() {
@@ -1328,7 +1507,8 @@
       field('vit_shopLabel', v.shopLabel, c.shopLabel || '', { placeholder: ex.shopLabel, help: vitrineExampleHelp(ex.shopLabel) }) +
       field('vit_shopTitle', v.shopTitle, c.shopTitle || '', { placeholder: ex.shopTitle, help: vitrineExampleHelp(ex.shopTitle) }) +
       '</div>' +
-      field('vit_fDesc', v.fDesc, c.fDesc || '', { placeholder: ex.fDesc, help: vitrineExampleHelp(ex.fDesc) });
+      field('vit_fDesc', v.fDesc, c.fDesc || '', { placeholder: ex.fDesc, help: vitrineExampleHelp(ex.fDesc) }) +
+      vitrineServicesLangFields(c, ex);
   }
 
   function renderVitrine() {
@@ -1395,6 +1575,7 @@
       '<p class="hint-block">' + esc(v.langTab) + '</p>' +
       vitrineDisplayPanel() +
       vitrineLangBlock() +
+      vitrineServicesPanel() +
       '</section>' +
       '<section class="panel"><h2>' + esc(v.social) + '</h2>' +
       vitrineDisplaySubPanel(
@@ -1464,6 +1645,10 @@
     if (!state.storefront) state.storefront = { content: {} };
     if (!state.storefront.content) state.storefront.content = {};
     var lg = state.vitrineEditLang || 'pt';
+    var svc = [];
+    for (var si = 0; si < VITRINE_SVC_COUNT; si++) {
+      svc.push({ t: val('vit_svc' + si + '_title'), d: val('vit_svc' + si + '_desc') });
+    }
     state.storefront.content[lg] = {
       hEye: val('vit_hEye'),
       hTitle: val('vit_hTitle'),
@@ -1472,7 +1657,8 @@
       hBtn2: val('vit_hBtn2'),
       shopLabel: val('vit_shopLabel'),
       shopTitle: val('vit_shopTitle'),
-      fDesc: val('vit_fDesc')
+      fDesc: val('vit_fDesc'),
+      svc: svc
     };
   }
 
@@ -1729,6 +1915,10 @@
     state.storefront.promoBarDisplay = chk('vit_promo_bar_display');
     state.storefront.promoFaixaDisplay = chk('vit_disp_promo_faixa');
     state.storefront.promoShowDefault = chk('vit_promo_show_default');
+    var svcItems = [];
+    for (var sdi = 0; sdi < VITRINE_SVC_COUNT; sdi++) {
+      svcItems.push(chk('vit_disp_svc' + sdi));
+    }
     state.storefront.display = {
       heroEyebrow: chk('vit_disp_hero_eye'),
       heroTitle: chk('vit_disp_hero_title'),
@@ -1737,6 +1927,7 @@
       shopHeader: chk('vit_disp_shop_hdr'),
       footerDesc: chk('vit_disp_footer_desc'),
       services: chk('vit_disp_services'),
+      svcItems: svcItems,
       social: chk('vit_disp_social'),
       promoFaixa: chk('vit_disp_promo_faixa')
     };
@@ -1816,6 +2007,9 @@
     patch.vitrine_display_shop_header = disp.shopHeader || '1';
     patch.vitrine_display_footer_desc = disp.footerDesc || '1';
     patch.vitrine_display_services = disp.services || '1';
+    for (var sdi = 0; sdi < VITRINE_SVC_COUNT; sdi++) {
+      patch['vitrine_display_svc' + sdi] = (disp.svcItems && disp.svcItems[sdi] != null) ? disp.svcItems[sdi] : '1';
+    }
     patch.vitrine_display_social = disp.social || '1';
     patch.vitrine_display_promo_faixa = disp.promoFaixa || sf.promoFaixaDisplay || '1';
     var ann = sf.announcement || {};
@@ -1851,6 +2045,13 @@
       patch['vitrine_shop_label_' + lg] = block.shopLabel != null ? block.shopLabel : '';
       patch['vitrine_shop_title_' + lg] = block.shopTitle != null ? block.shopTitle : '';
       patch['vitrine_footer_desc_' + lg] = block.fDesc != null ? block.fDesc : '';
+      if (block.svc && block.svc.length) {
+        for (var si = 0; si < VITRINE_SVC_COUNT; si++) {
+          var svcItem = block.svc[si] || {};
+          patch['vitrine_svc' + si + '_title_' + lg] = svcItem.t != null ? svcItem.t : '';
+          patch['vitrine_svc' + si + '_desc_' + lg] = svcItem.d != null ? svcItem.d : '';
+        }
+      }
     });
     return patch;
   }
@@ -1903,6 +2104,10 @@
       vitrine_display_shop_header: (sf.display && sf.display.shopHeader) || '1',
       vitrine_display_footer_desc: (sf.display && sf.display.footerDesc) || '1',
       vitrine_display_services: (sf.display && sf.display.services) || '1',
+      vitrine_display_svc0: (sf.display && sf.display.svcItems && sf.display.svcItems[0]) || '1',
+      vitrine_display_svc1: (sf.display && sf.display.svcItems && sf.display.svcItems[1]) || '1',
+      vitrine_display_svc2: (sf.display && sf.display.svcItems && sf.display.svcItems[2]) || '1',
+      vitrine_display_svc3: (sf.display && sf.display.svcItems && sf.display.svcItems[3]) || '1',
       vitrine_display_social: (sf.display && sf.display.social) || '1',
       vitrine_display_promo_faixa: (sf.display && sf.display.promoFaixa) || sf.promoFaixaDisplay || '1',
       announcement_promo_label_display: (sf.announcement && sf.announcement.labelDisplay) || '1',
@@ -1980,6 +2185,208 @@
     }).length;
   }
 
+  function reviewStatusLabel(st) {
+    var r = t().rev || {};
+    var k = String(st || '').toLowerCase();
+    if (k === 'aprovado') return r.stApproved || 'aprovado';
+    if (k === 'rejeitado') return r.stRejected || 'rejeitado';
+    return r.stPending || 'pendente';
+  }
+
+  function returnStatusLabel(st) {
+    var r = t().ret || {};
+    var k = String(st || '').toLowerCase();
+    if (k === 'approved') return r.stApproved || 'approved';
+    if (k === 'received') return r.stReceived || 'received';
+    if (k === 'refunded') return r.stRefunded || 'refunded';
+    if (k === 'rejected') return r.stRejected || 'rejected';
+    return r.stRequested || 'requested';
+  }
+
+  function renderReviews() {
+    var r = t().rev || {};
+    return '<p class="hint-block">' + esc(r.subtitle || '') + '</p>' +
+      '<div class="toolbar"><select class="select-in" onchange="Admin.setReviewFilter(this.value)">' +
+      '<option value="all"' + (state.reviewFilter === 'all' ? ' selected' : '') + '>' + esc(r.filterAll || 'All') + '</option>' +
+      '<option value="pendente"' + (state.reviewFilter === 'pendente' ? ' selected' : '') + '>' + esc(r.filterPending || 'Pending') + '</option>' +
+      '<option value="aprovado"' + (state.reviewFilter === 'aprovado' ? ' selected' : '') + '>' + esc(r.filterApproved || 'Approved') + '</option>' +
+      '<option value="rejeitado"' + (state.reviewFilter === 'rejeitado' ? ' selected' : '') + '>' + esc(r.filterRejected || 'Rejected') + '</option>' +
+      '</select><button type="button" class="btn-ghost" onclick="Admin.refreshReviews()">↻</button></div>' +
+      '<div class="table-wrap"><table class="data-table"><thead><tr><th>' + esc(r.product) + '</th><th>' + esc(r.rating) + '</th><th>' + esc(r.comment) + '</th><th>' + esc(r.date) + '</th><th>' + esc(r.status) + '</th><th></th></tr></thead><tbody>' +
+      (state.reviews.length ? state.reviews.map(function (rv) {
+        var id = esc(rv.avaliacao_id || '').replace(/'/g, "\\'");
+        var st = String(rv.estado || 'pendente').toLowerCase();
+        var actions = '';
+        if (st === 'pendente' || st === 'rejeitado') {
+          actions += '<button type="button" class="btn-sm" onclick="Admin.approveReview(\'' + id + '\')">' + esc(r.approve) + '</button> ';
+        }
+        if (st === 'pendente' || st === 'aprovado') {
+          actions += '<button type="button" class="btn-sm" onclick="Admin.rejectReview(\'' + id + '\')">' + esc(r.reject) + '</button> ';
+        }
+        actions += '<button type="button" class="btn-sm danger" onclick="Admin.deleteReview(\'' + id + '\')">' + esc(t().delete) + '</button>';
+        return '<tr><td>' + esc(rv.produto_id) + '</td><td>' + esc(rv.nota) + '/5</td><td style="max-width:220px;">' + esc(rv.comentario) + '</td><td>' + esc(rv.data) + '</td><td>' + esc(reviewStatusLabel(rv.estado)) + '</td><td class="actions">' + actions + '</td></tr>';
+      }).join('') : '<tr><td colspan="6" class="muted">' + esc(t().noData) + '</td></tr>') +
+      '</tbody></table></div>';
+  }
+
+  function renderReturns() {
+    var r = t().ret || {};
+    return '<p class="hint-block">' + esc(r.subtitle || '') + '</p>' +
+      '<div class="toolbar">' +
+      '<select class="select-in" onchange="Admin.setReturnFilter(this.value)">' +
+      '<option value=""' + (!state.returnFilter ? ' selected' : '') + '>' + esc(r.filterAll || 'All') + '</option>' +
+      '<option value="requested"' + (state.returnFilter === 'requested' ? ' selected' : '') + '>' + esc(r.filterRequested || 'Requested') + '</option>' +
+      '<option value="approved"' + (state.returnFilter === 'approved' ? ' selected' : '') + '>' + esc(r.filterApproved || 'Approved') + '</option>' +
+      '<option value="received"' + (state.returnFilter === 'received' ? ' selected' : '') + '>' + esc(r.filterReceived || 'Received') + '</option>' +
+      '<option value="refunded"' + (state.returnFilter === 'refunded' ? ' selected' : '') + '>' + esc(r.filterRefunded || 'Refunded') + '</option>' +
+      '<option value="rejected"' + (state.returnFilter === 'rejected' ? ' selected' : '') + '>' + esc(r.filterRejected || 'Rejected') + '</option>' +
+      '</select>' +
+      '<button type="button" class="btn-primary" onclick="Admin.newReturnModal()">' + esc(r.newReturn || 'New') + '</button>' +
+      '<button type="button" class="btn-ghost" onclick="Admin.refreshReturns()">↻</button></div>' +
+      '<div class="table-wrap"><table class="data-table"><thead><tr><th>ID</th><th>' + esc(r.orderId) + '</th><th>' + esc(r.client) + '</th><th>' + esc(r.product) + '</th><th>' + esc(r.reason) + '</th><th>' + esc(r.status) + '</th><th></th></tr></thead><tbody>' +
+      (state.returns.length ? state.returns.map(function (rt) {
+        var rid = esc(rt.return_id || '').replace(/'/g, "\\'");
+        return '<tr><td><strong>' + esc(rt.return_id) + '</strong></td><td>' + esc(rt.order_id) + '</td><td>' + esc(rt.client_email || rt.client_id) + '</td><td>' + esc(rt.product) + ' ×' + esc(rt.qty) + '</td><td>' + esc(rt.reason) + '</td><td>' + esc(returnStatusLabel(rt.status)) + '</td>' +
+          '<td class="actions"><button type="button" class="btn-sm" onclick="Admin.editReturn(\'' + rid + '\')">' + esc(t().edit) + '</button></td></tr>';
+      }).join('') : '<tr><td colspan="7" class="muted">' + esc(t().noData) + '</td></tr>') +
+      '</tbody></table></div>';
+  }
+
+  function setReviewFilter(f) {
+    state.reviewFilter = f || 'all';
+    loadViewData({ silent: true });
+  }
+
+  function setReturnFilter(f) {
+    state.returnFilter = f || '';
+    loadViewData({ silent: true });
+  }
+
+  function refreshReviews() {
+    if (state.view !== 'reviews') setView('reviews');
+    else loadViewData({ silent: false });
+  }
+
+  function refreshReturns() {
+    if (state.view !== 'returns') setView('returns');
+    else loadViewData({ silent: false });
+  }
+
+  async function approveReview(id) {
+    if (!id) return;
+    try {
+      var res = await erpCall('approveReview', { id: id });
+      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
+      toast(t().saved, 's');
+      await loadReviews();
+      renderMain();
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
+  }
+
+  async function rejectReview(id) {
+    if (!id) return;
+    try {
+      var res = await erpCall('rejectReview', { id: id });
+      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
+      toast(t().saved, 's');
+      await loadReviews();
+      renderMain();
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
+  }
+
+  async function deleteReview(id) {
+    var r = t().rev || {};
+    if (!id || !global.confirm(r.confirmDelete || t().delete + '?')) return;
+    try {
+      var res = await erpCall('deleteReview', { id: id });
+      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
+      toast(t().saved, 's');
+      await loadReviews();
+      renderMain();
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
+  }
+
+  function newReturnModal() {
+    var r = t().ret || {};
+    openModal(
+      '<div class="modal-inner"><h2>' + esc(r.newReturn) + '</h2>' +
+      field('ret_order_id', r.orderId, '') +
+      field('ret_product', r.product, '') +
+      field('ret_qty', r.qty, '1') +
+      field('ret_reason', r.reason, '') +
+      '<div class="field"><label>' + esc(r.notes) + '</label><textarea id="ret_notes" rows="2"></textarea></div>' +
+      '<div class="modal-actions"><button type="button" class="btn-ghost" onclick="Admin.closeModal()">' + esc(t().cancel) + '</button>' +
+      '<button type="button" class="btn-primary" onclick="Admin.saveNewReturn()">' + esc(t().save) + '</button></div></div>'
+    );
+  }
+
+  async function saveNewReturn() {
+    var r = t().ret || {};
+    var payload = {
+      order_id: val('ret_order_id'),
+      product: val('ret_product'),
+      qty: parseInt(val('ret_qty'), 10) || 1,
+      reason: val('ret_reason'),
+      notes: val('ret_notes')
+    };
+    if (!payload.order_id) { toast(t().error, 'e'); return; }
+    try {
+      var res = await erpCall('createReturn', payload);
+      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
+      toast(r.created || t().saved, 's');
+      closeModal();
+      await loadReturns();
+      renderMain();
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
+  }
+
+  function editReturn(returnId) {
+    var r = t().ret || {};
+    var rt = state.returns.find(function (x) { return x.return_id === returnId; });
+    if (!rt) return;
+    var rid = esc(returnId).replace(/'/g, "\\'");
+    openModal(
+      '<div class="modal-inner"><h2>' + esc(r.updateStatus) + ' — ' + esc(returnId) + '</h2>' +
+      '<p class="hint-block">' + esc(rt.order_id) + ' · ' + esc(rt.client_email || '') + '</p>' +
+      '<p style="font-size:11px;">' + esc(rt.product) + ' — ' + esc(rt.reason) + '</p>' +
+      '<div class="field"><label>' + esc(r.status) + '</label><select id="ret_status">' +
+      ['requested', 'approved', 'received', 'refunded', 'rejected'].map(function (s) {
+        return '<option value="' + s + '"' + (String(rt.status) === s ? ' selected' : '') + '>' + esc(returnStatusLabel(s)) + '</option>';
+      }).join('') + '</select></div>' +
+      '<div class="modal-actions"><button type="button" class="btn-ghost" onclick="Admin.closeModal()">' + esc(t().cancel) + '</button>' +
+      '<button type="button" class="btn-primary" onclick="Admin.saveReturnStatus(\'' + rid + '\')">' + esc(t().save) + '</button></div></div>'
+    );
+  }
+
+  async function saveReturnStatus(returnId) {
+    try {
+      var res = await erpCall('updateReturnStatus', { return_id: returnId, status: val('ret_status') });
+      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
+      toast(t().saved, 's');
+      closeModal();
+      await loadReturns();
+      renderMain();
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
+  }
+
+  async function changeAdminPassword() {
+    var tm = t().team || {};
+    var oldP = val('pwd_old');
+    var newP = val('pwd_new');
+    var newP2 = val('pwd_new2');
+    if (!oldP || !newP) { toast(tm.passwordHelp || t().error, 'e'); return; }
+    if (newP.length < 6) { toast(tm.passwordHelp || t().error, 'e'); return; }
+    if (newP !== newP2) { toast(t().error, 'e'); return; }
+    try {
+      var res = await erpCall('adminChangePassword', { old: oldP, new: newP });
+      if (!res || !res.success) { toast((res && res.error) || t().error, 'e'); return; }
+      toast(tm.changePwdOk || t().saved, 's');
+      $('pwd_old').value = '';
+      $('pwd_new').value = '';
+      $('pwd_new2').value = '';
+    } catch (e) { toast(apiErrMsg(e), 'e'); }
+  }
+
   function renderTeam() {
     var tm = t().team || {};
     if (!isAdminUser()) {
@@ -1988,6 +2395,11 @@
     var navLabels = t().nav || {};
     var staffViews = STAFF_ALLOWED_VIEWS.map(function (v) { return navLabels[v === 'coupons' ? 'promotions' : v] || navLabels[v] || v; }).join(', ');
     return '<p class="hint-block">' + esc(tm.subtitle) + '</p>' +
+      '<section class="panel"><h2>' + esc(tm.changePwdTitle || 'Mot de passe') + '</h2>' +
+      field('pwd_old', tm.oldPassword || 'Ancien', '', { help: tm.passwordHelp }) +
+      field('pwd_new', tm.newPasswordSelf || 'Nouveau', '') +
+      field('pwd_new2', tm.newPasswordSelf || 'Confirmer', '') +
+      '<button type="button" class="btn-primary" onclick="Admin.changeAdminPassword()">' + esc(tm.changePwdBtn || t().save) + '</button></section>' +
       '<section class="panel"><h2>' + esc(tm.accessTitle || 'Acessos por função') + '</h2>' +
       '<p class="field-help"><strong>' + esc(tm.roleAdmin || 'Administrador') + '</strong> — ' + esc(tm.accessAdmin || 'Acesso total: tudo + Conteúdo da vitrine, Configuração e Equipa admin.') + '</p>' +
       '<p class="field-help"><strong>' + esc(tm.roleStaff || 'Pessoal') + '</strong> — ' + esc(tm.accessStaff || 'Acesso operacional:') + ' ' + esc(staffViews) + '</p>' +
@@ -2312,6 +2724,18 @@
         return '<li>' + esc(d.nome_produto || d.produto_id) + ' × ' + esc(d.quantidade) + ' — ' + esc(d.preco) + ' €</li>';
       }).join('');
       if (!lines) lines = '<li class="muted">' + esc(t().noData) + '</li>';
+      var customerBlock = '';
+      if (ord.telefone || ord.endereco || ord.cliente_nif || ord.fiscal_doc_url || ord.fiscal_doc_ref) {
+        customerBlock = '<div class="panel" style="margin:12px 0;padding:12px;"><p class="hint-block" style="margin:0 0 8px;"><strong>' + esc(o.customerBlock || 'Client') + '</strong></p>';
+        if (ord.telefone) customerBlock += '<p style="font-size:11px;margin:4px 0;">' + esc(o.phone || 'Tél.') + ': ' + esc(ord.telefone) + '</p>';
+        if (ord.endereco) customerBlock += '<p style="font-size:11px;margin:4px 0;">' + esc(o.address || 'Adresse') + ': ' + esc(ord.endereco) + '</p>';
+        if (ord.cliente_nif) customerBlock += '<p style="font-size:11px;margin:4px 0;">' + esc(o.nif || 'NIF') + ': ' + esc(ord.cliente_nif) + '</p>';
+        if (ord.fiscal_doc_ref) customerBlock += '<p style="font-size:11px;margin:4px 0;">' + esc(o.fiscalRef || 'Réf.') + ': ' + esc(ord.fiscal_doc_ref) + '</p>';
+        if (ord.fiscal_doc_url) {
+          customerBlock += '<p style="font-size:11px;margin:4px 0;"><a href="' + esc(ord.fiscal_doc_url) + '" target="_blank" rel="noopener">' + esc(o.fiscalDoc || 'PDF') + '</a></p>';
+        }
+        customerBlock += '</div>';
+      }
       var payState = String(ord.estado_pagamento || '').toLowerCase();
       var stripeBlock = '';
       if (ord.stripe_payment_intent) {
@@ -2329,6 +2753,7 @@
       openModal(
         '<div class="modal-inner"><h2>' + esc(o.detail) + ' #' + esc(ord.pedido_id || orderId) + '</h2>' +
         '<p class="hint-block">' + esc(ord.data) + ' · ' + esc(ord.email) + ' · <strong>' + esc(ord.total) + ' €</strong></p>' +
+        customerBlock +
         stripeBlock +
         '<ul class="order-lines">' + lines + '</ul>' +
         '<div class="field"><label>' + esc(o.status) + '</label><select id="of_estado">' + orderStatusOptions(curEst) + '</select></div>' +
@@ -2491,8 +2916,25 @@
         toast((res && res.error) || t().error, 'e');
         return;
       }
+      if (isAdminUser() && $('emp_nome')) {
+        try {
+          await erpCall('updateEmpresa', {
+            nome: val('emp_nome'),
+            nif: val('emp_nif'),
+            email: val('emp_email'),
+            telefone: val('emp_telefone'),
+            morada: val('emp_morada'),
+            cidade: val('emp_cidade'),
+            pais: val('emp_pais'),
+            website: val('emp_website'),
+            moeda: val('emp_moeda'),
+            tva_padrao: val('emp_tva_padrao')
+          });
+        } catch (eEmp) { /* ignore */ }
+      }
       toast(t().saved, 's');
       await loadConfig();
+      await loadEmpresa();
       renderMain();
     } catch (e) { toast(apiErrMsg(e), 'e'); }
   }
@@ -2577,6 +3019,19 @@
     setOrderSearch: setOrderSearch,
     setOrderFilter: setOrderFilter,
     refreshOrders: refreshOrders,
+    loadMoreOrders: loadMoreOrders,
+    setReviewFilter: setReviewFilter,
+    setReturnFilter: setReturnFilter,
+    refreshReviews: refreshReviews,
+    refreshReturns: refreshReturns,
+    approveReview: approveReview,
+    rejectReview: rejectReview,
+    deleteReview: deleteReview,
+    newReturnModal: newReturnModal,
+    saveNewReturn: saveNewReturn,
+    editReturn: editReturn,
+    saveReturnStatus: saveReturnStatus,
+    changeAdminPassword: changeAdminPassword,
     setOrderQuick: setOrderQuick,
     setClientSearch: setClientSearch,
     editProduct: editProduct,
