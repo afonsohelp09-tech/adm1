@@ -1016,6 +1016,7 @@
       storeName: res.storeName || st.site_name || '',
       logoUrl: res.logoUrl || st.store_logo_url || '',
       heroBgUrl: res.heroBgUrl || st.vitrine_hero_bg_url || '',
+      heroMotionCanvas: st.vitrine_hero_motion_canvas == null || st.vitrine_hero_motion_canvas === '' ? '0' : String(st.vitrine_hero_motion_canvas),
       tagline: res.tagline || st.boutique_footer_tagline || '',
       colors: res.colors || { main: st.color_main || '#1a1a1a', accent: st.color_accent || '#c9a96e' },
       heroTextColors: {
@@ -1597,6 +1598,8 @@
       '<p class="field-help">' + esc(v.heroFormats || 'Formats acceptes : JPG, JFIF, PNG, WebP, GIF, BMP, TIFF, SVG, HEIC, HEIF, AVIF, ICO — fichiers lourds acceptes (jusqu\'a 500 Mo). Vous pouvez aussi coller une URL ci-dessous.') + '</p>' +
       field('vit_hero_bg_url', v.heroUrl, heroUrl) +
       vitrineGalleryBlock('hero_bg') +
+      check('vit_hero_motion', v.heroMotion || 'Fond animé luxe (canvas particules)', (sf.heroMotionCanvas === '1' || sf.heroMotionCanvas === 1) ? '1' : '0') +
+      '<p class="field-help">' + esc(v.heroMotionHelp || 'Alternative à l\'image statique : animation dorée. Utilise les couleurs marque. Une image reste possible au centre (produit / mannequin).') + '</p>' +
       '</div>' +
       '<div class="fgrid">' +
       colorField('vit_color_main', v.colorMain, colors.main || '#1A1A1A', {
@@ -1945,6 +1948,7 @@
     state.storefront.storeName = val('vit_store_name').trim();
     state.storefront.logoUrl = val('vit_logo_url').trim();
     state.storefront.heroBgUrl = val('vit_hero_bg_url').trim();
+    state.storefront.heroMotionCanvas = chk('vit_hero_motion');
     state.storefront.colors = {
       main: normalizeHexColor(val('vit_color_main'), '#1A1A1A'),
       accent: normalizeHexColor(val('vit_color_accent'), '#C9A96E')
@@ -2043,6 +2047,7 @@
       color_main: (sf.colors && sf.colors.main) || '#1A1A1A',
       color_accent: (sf.colors && sf.colors.accent) || '#C9A96E',
       vitrine_hero_bg_url: sf.heroBgUrl || '',
+      vitrine_hero_motion_canvas: sf.heroMotionCanvas || '0',
       vitrine_hero_eyebrow_color: (sf.heroTextColors && sf.heroTextColors.eyebrow) || '',
       vitrine_hero_title_color: (sf.heroTextColors && sf.heroTextColors.title) || '',
       vitrine_hero_sub_color: (sf.heroTextColors && sf.heroTextColors.sub) || '',
@@ -2126,6 +2131,7 @@
       storeName: sf.storeName,
       logoUrl: sf.logoUrl,
       heroBgUrl: sf.heroBgUrl,
+      vitrine_hero_motion_canvas: sf.heroMotionCanvas || '0',
       color_main: sf.colors.main,
       color_accent: sf.colors.accent,
       heroEyebrowColor: (sf.heroTextColors && sf.heroTextColors.eyebrow) || '',
