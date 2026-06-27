@@ -53,6 +53,8 @@
     galleryImages: [],
     selectedSizes: {},
     selectedColors: {},
+    colorImages: {},
+    previewColorId: '',
     driveImages: [],
     saving: false
   };
@@ -136,8 +138,10 @@
     wiz.imageMime = null;
     wiz.imageFileName = '';
     wiz.galleryImages = [];
-    wiz.selectedSizes = { M: true };
+    wiz.selectedSizes = {};
     wiz.selectedColors = {};
+    wiz.colorImages = {};
+    wiz.previewColorId = '';
     wiz.driveImages = [];
     wiz.saving = false;
   }
@@ -170,31 +174,64 @@
     syncPrimaryFromGallery();
     wiz.selectedSizes = {};
     wiz.selectedColors = {};
+    wiz.colorImages = {};
+    wiz.previewColorId = '';
     var vars = pr.variantes || [];
     if (vars.length) {
       wiz.stockDefault = parseInt(vars[0].stock || vars[0].quantidade, 10) || 10;
       vars.forEach(function (v) {
         if (v.tamanho) wiz.selectedSizes[v.tamanho] = true;
         var col = findColorById(v.cor) || findColorByName(v.cor);
-        if (col) wiz.selectedColors[col.id] = true;
-        else if (v.cor) {
+        var cid;
+        if (col) {
+          cid = col.id;
+          wiz.selectedColors[cid] = true;
+        } else if (v.cor) {
           var custom = ensureCustomColor(v.cor, '#888888');
-          wiz.selectedColors[custom.id] = true;
+          cid = custom.id;
+          wiz.selectedColors[cid] = true;
+        }
+        if (cid && v.imagem_variante && !wiz.colorImages[cid]) {
+          wiz.colorImages[cid] = { url: v.imagem_variante, preview: v.imagem_variante };
         }
       });
     }
-    if (!Object.keys(wiz.selectedSizes).length) wiz.selectedSizes.M = true;
+    if (!Object.keys(wiz.selectedSizes).length && !Object.keys(wiz.selectedColors).length) wiz.selectedSizes.M = true;
+  }
+
+  function effectiveSizesForVariants() {
+    var sizes = sortSizesList(Object.keys(wiz.selectedSizes));
+    if (!sizes.length && Object.keys(wiz.selectedColors).length) return ['TU'];
+    return sizes;
+  }
+
+  function colorVariantImage(cid, fallbackUrl) {
+    var ci = wiz.colorImages[cid];
+    if (ci) {
+      if (ci.url) return ci.url;
+      if (ci.preview && /^https?:\/\//i.test(String(ci.preview))) return ci.preview;
+    }
+    return fallbackUrl || wiz.imageUrl || '';
+  }
+
+  function hasAnyProductImage() {
+    if (galleryIsValid()) return true;
+    return Object.keys(wiz.selectedColors).some(function (cid) {
+      var ci = wiz.colorImages[cid];
+      return !!(ci && (ci.url || ci.preview || ci.base64));
+    });
   }
 
   function buildVariants(imageUrl) {
-    var sizes = sortSizesList(Object.keys(wiz.selectedSizes));
+    var sizes = effectiveSizesForVariants();
     var colorIds = Object.keys(wiz.selectedColors);
     var out = [];
     var stock = parseInt(String(wiz.stockDefault), 10) || 0;
-    var img = imageUrl || wiz.imageUrl || '';
+    var defaultImg = imageUrl || wiz.imageUrl || '';
     sizes.forEach(function (sz) {
       colorIds.forEach(function (cid) {
         var col = findColorById(cid);
+        var img = colorVariantImage(cid, defaultImg) || defaultImg;
         out.push({
           tamanho: sz,
           cor: col ? variantColorKey(col) : cid,
@@ -338,12 +375,112 @@
     el.querySelectorAll('[data-color]').forEach(function (btn) {
       btn.onclick = function () {
         var id = btn.getAttribute('data-color');
-        if (wiz.selectedColors[id]) delete wiz.selectedColors[id];
-        else wiz.selectedColors[id] = true;
+        if (wiz.selectedColors[id]) {
+          delete wiz.selectedColors[id];
+          delete wiz.colorImages[id];
+          if (wiz.previewColorId === id) wiz.previewColorId = '';
+        } else {
+          wiz.selectedColors[id] = true;
+          if (!wiz.previewColorId) wiz.previewColorId = id;
+        }
         renderColorSwatches();
+        renderColorPhotos();
         updatePreview();
       };
     });
+  }
+
+  function renderColorPhotos() {
+    var section = document.getElementById('pw_color_photos_section');
+    var box = document.getElementById('pw_color_photos');
+    if (!box) return;
+    var ww = w();
+    var colorIds = Object.keys(wiz.selectedColors);
+    if (section) section.style.display = colorIds.length ? '' : 'none';
+    if (!colorIds.length) {
+      box.innerHTML = '';
+      return;
+    }
+    box.innerHTML = colorIds.map(function (cid) {
+      var col = findColorById(cid);
+      if (!col) return '';
+      var ci = wiz.colorImages[cid] || {};
+      var src = ci.preview || ci.url || '';
+      var border = col.border ? ' border-swatch' : '';
+      var cidEsc = esc(cid).replace(/'/g, "\\'");
+      return '<div class="pw-color-photo-row">' +
+        '<span class="pw-dot' + border + '" style="background:' + esc(col.hex) + '" title="' + esc(colorLabel(col)) + '"></span>' +
+        '<div class="pw-color-photo-meta"><strong>' + esc(colorLabel(col)) + '</strong>' +
+        '<span class="muted">' + esc(ww.colorPhotoHint || 'Photo affichée quand le client choisit cette couleur') + '</span></div>' +
+        '<div class="pw-color-photo-thumb">' + (src ? '<img src="' + esc(src) + '" alt=""/>' : '<span class="pw-card-empty">' + esc(ww.colorPhotoEmpty || '—') + '</span>') + '</div>' +
+        '<div class="pw-color-photo-actions">' +
+        '<input type="file" accept="image/*" class="sr-only" id="pw_cf_' + esc(cid) + '" onchange="ProductWizard.onColorPhotoFile(\'' + cidEsc + '\', this)"/>' +
+        '<button type="button" class="btn-sm" onclick="document.getElementById(\'pw_cf_' + esc(cid) + '\').click()">' + esc(ww.colorPhotoUpload || 'Photo') + '</button>' +
+        (wiz.galleryImages.length ? '<button type="button" class="btn-sm" onclick="ProductWizard.assignColorPhotoFromGallery(\'' + cidEsc + '\',0)">' + esc(ww.colorPhotoFromGallery || 'Galerie') + '</button>' : '') +
+        (src ? '<button type="button" class="btn-sm btn-danger-sm" onclick="ProductWizard.clearColorPhoto(\'' + cidEsc + '\')">' + esc(ww.colorPhotoClear || 'Retirer') + '</button>' : '') +
+        '</div></div>';
+    }).join('');
+  }
+
+  function setColorPhotoPack(cid, pack) {
+    if (!cid || !pack) return;
+    if (!wiz.colorImages[cid]) wiz.colorImages[cid] = {};
+    wiz.colorImages[cid].preview = pack.preview || pack.url || '';
+    if (pack.url) wiz.colorImages[cid].url = pack.url;
+    if (pack.base64) wiz.colorImages[cid].base64 = pack.base64;
+    if (pack.mime) wiz.colorImages[cid].mime = pack.mime;
+    if (pack.fileName) wiz.colorImages[cid].fileName = pack.fileName;
+    wiz.previewColorId = cid;
+    renderColorPhotos();
+    updatePreview();
+  }
+
+  function onColorPhotoFile(cid, input) {
+    var file = input && input.files && input.files[0];
+    if (input) input.value = '';
+    if (!file) return;
+    compressImageFile(file, function (pack) {
+      if (!pack) {
+        toast(w().imgTypeError || 'Image invalide', 'e');
+        return;
+      }
+      setColorPhotoPack(cid, pack);
+    });
+  }
+
+  function assignColorPhotoFromGallery(cid, galleryIndex) {
+    galleryIndex = parseInt(galleryIndex, 10) || 0;
+    var g = wiz.galleryImages[galleryIndex];
+    if (!g) return;
+    setColorPhotoPack(cid, {
+      url: g.url || '',
+      preview: g.preview || g.url || ''
+    });
+  }
+
+  function clearColorPhoto(cid) {
+    if (wiz.colorImages[cid]) delete wiz.colorImages[cid];
+    renderColorPhotos();
+    updatePreview();
+  }
+
+  async function resolveColorImageUrls(produtoId, categoria) {
+    var ids = Object.keys(wiz.selectedColors);
+    for (var i = 0; i < ids.length; i++) {
+      var cid = ids[i];
+      var ci = wiz.colorImages[cid];
+      if (!ci) continue;
+      if (ci.url && /^https?:\/\//i.test(String(ci.url))) continue;
+      if (ci.base64 && ci.mime && produtoId) {
+        var uploaded = await uploadGalleryItemToDrive(ci, produtoId, categoria, i + 100);
+        if (uploaded) {
+          ci.url = uploaded;
+          ci.preview = uploaded;
+          delete ci.base64;
+          delete ci.mime;
+        }
+      }
+    }
   }
 
   function renderDriveGallery() {
@@ -479,8 +616,13 @@
     if (!card) return;
     var p = t().prod;
     var imgSrc = wiz.imagePreview || wiz.imageUrl || '';
-    var sizes = sortSizesList(Object.keys(wiz.selectedSizes));
     var colorIds = Object.keys(wiz.selectedColors);
+    if (colorIds.length) {
+      var prevId = wiz.previewColorId && wiz.selectedColors[wiz.previewColorId] ? wiz.previewColorId : colorIds[0];
+      var prevImg = colorVariantImage(prevId, imgSrc);
+      if (prevImg) imgSrc = prevImg;
+    }
+    var sizes = effectiveSizesForVariants();
     var priceHt = parseFloat(wiz.preco_ht) || 0;
     var tva = parseFloat(wiz.tva) || 23;
     var priceTtc = (priceHt * (1 + tva / 100)).toFixed(2);
@@ -497,7 +639,10 @@
       html += '<div class="pw-card-colors">' + colorIds.map(function (cid) {
         var c = findColorById(cid);
         if (!c) return '';
-        return '<span class="pw-dot' + (c.border ? ' border-swatch' : '') + '" style="background:' + esc(c.hex) + '" title="' + esc(colorLabel(c)) + '"></span>';
+        var on = wiz.previewColorId === cid ? ' on' : '';
+        var cidEsc = esc(cid).replace(/'/g, "\\'");
+        return '<button type="button" class="pw-dot-btn' + on + '" onclick="ProductWizard.setPreviewColor(\'' + cidEsc + '\')" title="' + esc(colorLabel(c)) + '">' +
+          '<span class="pw-dot' + (c.border ? ' border-swatch' : '') + '" style="background:' + esc(c.hex) + '"></span></button>';
       }).join('') + '</div>';
     }
     var variantCount = sizes.length * colorIds.length;
@@ -633,9 +778,17 @@
     else {
       var c = ensureCustomColor(name, hex);
       wiz.selectedColors[c.id] = true;
+      if (!wiz.previewColorId) wiz.previewColorId = c.id;
     }
     if (nameEl) nameEl.value = '';
     renderColorSwatches();
+    renderColorPhotos();
+    updatePreview();
+  }
+
+  function setPreviewColor(cid) {
+    if (!wiz.selectedColors[cid]) return;
+    wiz.previewColorId = cid;
     updatePreview();
   }
 
@@ -726,6 +879,7 @@
       '</section>' +
       '<section class="wizard-section">' +
       '<h3>' + esc(ww.sizes || p.size) + '</h3>' +
+      '<p class="field-help">' + esc(ww.sizesOptional || 'Optionnel si vous ne proposez qu\'une taille unique (TU auto).') + '</p>' +
       '<div class="size-badges" id="pw_sizes"></div>' +
       '</section>' +
       '<section class="wizard-section">' +
@@ -736,6 +890,11 @@
       '<input type="text" id="pw_custom_name" placeholder="' + esc(ww.colorName || 'Nom couleur') + '"/>' +
       '<button type="button" class="btn-sm" onclick="ProductWizard.addCustomColor()">' + esc(ww.addColor || t().add) + '</button>' +
       '</div>' +
+      '</section>' +
+      '<section class="wizard-section" id="pw_color_photos_section" style="display:none">' +
+      '<h3>' + esc(ww.colorPhotos || 'Photos par couleur') + '</h3>' +
+      '<p class="hint-block">' + esc(ww.colorPhotosHint || 'Associez une photo à chaque couleur (ex. t-shirt vert). Sur la vitrine, l\'image change quand le client choisit la couleur.') + '</p>' +
+      '<div id="pw_color_photos"></div>' +
       '</section>' +
       '<section class="wizard-section">' +
       '<h3>' + esc(ww.driveGallery || 'Galerie Drive') + '</h3>' +
@@ -769,6 +928,7 @@
     deps.openModal(wizardHtml(!!id), { wide: true });
     renderSizeBadges();
     renderColorSwatches();
+    renderColorPhotos();
     bindUploadZone();
     bindGalleryUrlField();
     bindCatalogStatusField();
@@ -784,12 +944,11 @@
     var ww = w();
     if (!wiz.nome) { toast(ww.nameRequired || 'Nom requis', 'e'); return; }
     if (!wiz.categoria) { toast(ww.catRequired || 'Catégorie requise', 'e'); return;      }
-    var sizes = Object.keys(wiz.selectedSizes);
     var colors = Object.keys(wiz.selectedColors);
-    if (!sizes.length) { toast(ww.sizeRequired || 'Sélectionnez au moins une taille', 'e'); return; }
     if (!colors.length) { toast(ww.colorRequired || 'Sélectionnez au moins une couleur', 'e'); return; }
-    if (!galleryIsValid()) {
-      toast(ww.imgRequired || 'Ajoutez au moins une image', 'e');
+    if (!effectiveSizesForVariants().length) { toast(ww.sizeRequired || 'Sélectionnez au moins une taille', 'e'); return; }
+    if (!hasAnyProductImage()) {
+      toast(ww.imgRequired || 'Ajoutez au moins une image (galerie ou photo par couleur)', 'e');
       return;
     }
     if (wiz.catalogo_status === 'agendado' && !wiz.publicar_em) {
@@ -825,13 +984,16 @@
       if (prodId) {
         payload.produto_id = prodId;
         var urlsEdit = await resolveGalleryUrls(prodId, wiz.categoria);
-        if (!urlsEdit.length) {
+        if (!urlsEdit.length && !hasAnyProductImage()) {
           toast(ww.imgRequired || 'Ajoutez au moins une image', 'e');
           return;
         }
-        payload.imagem = urlsEdit[0];
-        payload.imagens = urlsEdit.map(function (u, i) { return { url: u, ordem: i }; });
-        payload.variantes = buildVariants(urlsEdit[0]);
+        await resolveColorImageUrls(prodId, wiz.categoria);
+        var mainEdit = urlsEdit[0] || '';
+        if (!mainEdit) mainEdit = colorVariantImage(Object.keys(wiz.selectedColors)[0], '') || initialUrl;
+        payload.imagem = mainEdit;
+        payload.imagens = urlsEdit.length ? urlsEdit.map(function (u, i) { return { url: u, ordem: i }; }) : (mainEdit ? [{ url: mainEdit, ordem: 0 }] : []);
+        payload.variantes = buildVariants(mainEdit);
         res = await deps.erpCall('updateProduct', payload);
       } else {
         res = await deps.erpCall('createProduct', payload);
@@ -841,15 +1003,17 @@
           return;
         }
         var urlsNew = await resolveGalleryUrls(prodId, wiz.categoria);
-        if (!urlsNew.length) {
+        if (!urlsNew.length && !hasAnyProductImage()) {
           toast(ww.imgRequired || 'Ajoutez au moins une image', 'e');
           return;
         }
+        await resolveColorImageUrls(prodId, wiz.categoria);
+        var mainUrl = urlsNew[0] || colorVariantImage(Object.keys(wiz.selectedColors)[0], '') || initialUrl;
         res = await deps.erpCall('updateProduct', {
           produto_id: prodId,
-          imagem: urlsNew[0],
-          imagens: urlsNew.map(function (u, i) { return { url: u, ordem: i }; }),
-          variantes: buildVariants(urlsNew[0]),
+          imagem: mainUrl,
+          imagens: urlsNew.length ? urlsNew.map(function (u, i) { return { url: u, ordem: i }; }) : (mainUrl ? [{ url: mainUrl, ordem: 0 }] : []),
+          variantes: buildVariants(mainUrl),
           replace_variants: true
         });
       }
@@ -899,6 +1063,10 @@
     setImageUrl: setImageUrl,
     removeGallery: removeGalleryImage,
     moveGallery: moveGalleryImage,
-    syncDrive: syncDriveFolders
+    syncDrive: syncDriveFolders,
+    onColorPhotoFile: onColorPhotoFile,
+    assignColorPhotoFromGallery: assignColorPhotoFromGallery,
+    clearColorPhoto: clearColorPhoto,
+    setPreviewColor: setPreviewColor
   };
 })(typeof window !== 'undefined' ? window : this);
