@@ -163,12 +163,28 @@
 
   function renderPromoBanner() {
     var pm = t().promo || {};
-    var on = d.cfgVal('promo_banner_enabled', '0');
-    var txt = d.cfgVal('promo_banner_text', '');
+    var vit = t().vit || {};
+    var cfg = t().cfg || {};
+    var cv = d.cfgVal;
+    var on = cv('promo_banner_enabled', '0');
+    var txt = cv('promo_banner_text', '');
+    var annOn = cv('announcement_enabled', '0');
     return '<section class="panel"><h2>' + esc(pm.bannerTab || 'Bandeau') + '</h2>' +
-      '<p class="hint-block">' + esc(pm.bannerDesc || '') + '</p>' +
-      '<label class="check-row"><input type="checkbox" id="promo_banner_on"' + (on === '1' ? ' checked' : '') + '/> ' + esc(pm.bannerOn || '') + '</label>' +
-      '<div class="field"><label>' + esc(pm.bannerText || '') + '</label><input id="promo_banner_text" value="' + esc(txt) + '"/></div>' +
+      '<p class="hint-block">' + esc(pm.bannerDesc || vit.promoSectionHint || '') + '</p>' +
+      '<label class="check-row"><input type="checkbox" id="promo_bar_display"' + (cv('promo_bar_display', '1') === '1' ? ' checked' : '') + '/> ' + esc(cfg.promoBarShow || vit.promoBarShow || 'Afficher le bandeau en haut') + '</label>' +
+      '<label class="check-row"><input type="checkbox" id="promo_faixa_display"' + (cv('vitrine_display_promo_faixa', '1') === '1' ? ' checked' : '') + '/> ' + esc(vit.showPromoFaixa || 'Afficher le contenu de la faixa') + '</label>' +
+      '<label class="check-row"><input type="checkbox" id="promo_banner_on"' + (on === '1' ? ' checked' : '') + '/> ' + esc(pm.bannerOn || cfg.promoOn || '') + '</label>' +
+      '<div class="field"><label>' + esc(pm.bannerText || cfg.promoText || '') + '</label><input id="promo_banner_text" value="' + esc(txt) + '" placeholder="✦ {{promo_label}} · -{{pct}}% COM O CÓDIGO {{code}} ✦"/></div>' +
+      '<p class="field-help">' + esc(vit.annHint || 'Variables : {{code}}, {{pct}}, {{promo_label}}, {{valid_until}}…') + '</p>' +
+      '<label class="check-row"><input type="checkbox" id="promo_show_default"' + (cv('promo_banner_show_default', '0') === '1' ? ' checked' : '') + '/> ' + esc(cfg.promoShowDefault || vit.promoShowDefault || 'Texte par défaut si faixa vide') + '</label>' +
+      '<p class="field-help" style="margin:16px 0 8px"><strong>' + esc(vit.annTitle || 'Campanha / Anúncio') + '</strong></p>' +
+      '<label class="check-row"><input type="checkbox" id="ann_enabled"' + (annOn === '1' ? ' checked' : '') + '/> ' + esc(vit.annOn || 'Ativar campanha (prioridade sobre faixa)') + '</label>' +
+      '<label class="check-row"><input type="checkbox" id="ann_marquee"' + (cv('announcement_marquee', '1') === '1' ? ' checked' : '') + '/> ' + esc(vit.annMarquee || 'Texto deslizante') + '</label>' +
+      '<div class="field"><label>' + esc(vit.annText || 'Texto do anúncio') + '</label><input id="ann_text" value="' + esc(cv('announcement_text', '')) + '"/></div>' +
+      '<div class="fgrid"><div class="field"><label>{{code}}</label><input id="ann_code" value="' + esc(cv('announcement_promo_code', '')) + '" placeholder="BIENVENUE10"/></div>' +
+      '<div class="field"><label>{{pct}}</label><input id="ann_pct" value="' + esc(cv('announcement_promo_pct', '')) + '" placeholder="10"/></div></div>' +
+      '<div class="fgrid"><div class="field"><label>' + esc(vit.annStart || 'Data início') + '</label><input id="ann_start" type="date" value="' + esc(String(cv('announcement_date_start', '')).slice(0, 10)) + '"/></div>' +
+      '<div class="field"><label>' + esc(vit.annEnd || 'Data fim') + '</label><input id="ann_end" type="date" value="' + esc(String(cv('announcement_date_end', '')).slice(0, 10)) + '"/></div></div>' +
       '<button type="button" class="btn-primary" onclick="Admin.savePromoBanner()">' + esc(pm.saveBanner || t().save) + '</button></section>';
   }
 
@@ -387,9 +403,22 @@
 
   async function savePromoBanner() {
     try {
+      var txt = ($('promo_banner_text') && $('promo_banner_text').value) || '';
+      var faixaOn = ($('promo_banner_on') && $('promo_banner_on').checked) || !!String(txt).trim();
       var res = await d.erpCall('updateConfig', {
-        promo_banner_enabled: ($('promo_banner_on') && $('promo_banner_on').checked) ? '1' : '0',
-        promo_banner_text: ($('promo_banner_text') && $('promo_banner_text').value) || ''
+        promo_bar_display: ($('promo_bar_display') && $('promo_bar_display').checked) ? '1' : '0',
+        vitrine_display_promo_faixa: ($('promo_faixa_display') && $('promo_faixa_display').checked) ? '1' : '0',
+        promo_banner_enabled: faixaOn ? '1' : '0',
+        promo_banner_text: txt,
+        promo_banner_show_default: ($('promo_show_default') && $('promo_show_default').checked) ? '1' : '0',
+        announcement_enabled: ($('ann_enabled') && $('ann_enabled').checked) ? '1' : '0',
+        announcement_display: '1',
+        announcement_marquee: ($('ann_marquee') && $('ann_marquee').checked) ? '1' : '0',
+        announcement_text: ($('ann_text') && $('ann_text').value) || '',
+        announcement_promo_code: ($('ann_code') && $('ann_code').value.trim()) || '',
+        announcement_promo_pct: ($('ann_pct') && $('ann_pct').value.trim()) || '',
+        announcement_date_start: ($('ann_start') && $('ann_start').value) || '',
+        announcement_date_end: ($('ann_end') && $('ann_end').value) || ''
       });
       if (!res || !res.success) { toast(t().error, 'e'); return; }
       toast(t().saved, 's');

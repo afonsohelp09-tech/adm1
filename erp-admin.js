@@ -1665,7 +1665,7 @@
         placeholder: vitrineExampleSet(state.vitrineEditLang || 'pt').promoText,
         help: vitrineExampleHelp(vitrineExampleSet(state.vitrineEditLang || 'pt').promoText)
       }) +
-      check('vit_promo_show_default', v.promoShowDefault || 'Afficher le texte par défaut (livraison, retours…) si la faixa est inactive', sf.promoShowDefault != null ? sf.promoShowDefault : '1') +
+      check('vit_promo_show_default', v.promoShowDefault || 'Afficher le texte par défaut (livraison, retours…) si la faixa est inactive', sf.promoShowDefault != null ? sf.promoShowDefault : '0') +
       '<p class="field-help" style="margin:16px 0 10px"><strong>' + esc(v.annTitle || 'Campanha / Anúncio (avançado)') + '</strong></p>' +
       '<p class="hint-block">' + esc(v.annHint || 'Campanha com datas e variáveis. Se ativa et affichée, tem prioridade sobre a faixa promocional acima.') + '</p>' +
       vitrineDisplaySubPanel(
@@ -2056,7 +2056,7 @@
       social_facebook: (sf.social && sf.social.facebook) || '',
       social_pinterest: (sf.social && sf.social.pinterest) || '',
       social_tiktok: (sf.social && sf.social.tiktok) || '',
-      promo_banner_enabled: sf.promoOn || '0',
+      promo_banner_enabled: (sf.promoOn === '1' || sf.promoOn === 1 || String(sf.promoText || '').trim()) ? '1' : '0',
       promo_bar_display: sf.promoBarDisplay || '1',
       promo_banner_show_default: sf.promoShowDefault || '1',
       promo_banner_text: sf.promoText || ''
@@ -2980,7 +2980,7 @@
       pay_paypal_me: val('cfg_paypal_me'),
       pay_show_whatsapp: chk('cfg_show_whatsapp'),
       guest_checkout_enabled: chk('cfg_guest_checkout'),
-      promo_banner_enabled: chk('cfg_promo_on'),
+      promo_banner_enabled: (chk('cfg_promo_on') === '1' || val('cfg_promo_text').trim()) ? '1' : '0',
       promo_bar_display: chk('cfg_promo_bar_display'),
       promo_banner_show_default: chk('cfg_promo_show_default'),
       promo_banner_text: val('cfg_promo_text'),
@@ -3216,7 +3216,7 @@
   //    Note     : laisser cfg_fiscal_api_key vide pour conserver la clé existante
   //
   //  #5 CONTACT
-  //    Champs   : cfg_phone (+351 939 211 794), cfg_whatsapp (939211794),
+  //    Champs   : cfg_phone (+351 937 831 268), cfg_whatsapp (351937831268),
   //               cfg_contact_email, cfg_store_email
   //
   //  STRIPE (#2 sk_ + #3 pk_)

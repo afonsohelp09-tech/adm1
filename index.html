@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="pt-PT" data-theme="dark">
 <head>
 <meta charset="UTF-8"/>
@@ -8,7 +8,7 @@
 <link rel="icon" type="image/png" sizes="200x200" href="icons/icon-200.png"/>
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png"/>
 <meta name="theme-color" content="#0b0a09" id="metaThemeColor"/>
-<title>AZAVISION — Admin ERP</title>
+<title>AZAVISION â€” Admin ERP</title>
 <script>
 (function(){
   var k='azav_admin_theme',s=localStorage.getItem(k);
@@ -53,7 +53,7 @@ body{
   -webkit-font-smoothing:antialiased;-moz-osx-font-smoothing:grayscale;line-height:1.5;
 }
 body.scroll-lock{overflow:hidden;position:fixed;width:100%}
-/* Lisibilité texte — modes clair & sombre */
+/* LisibilitÃ© texte â€” modes clair & sombre */
 input,textarea,select,button{font-family:inherit}
 input,textarea,select{color:var(--text);background:var(--input-bg)}
 input::placeholder,textarea::placeholder{color:var(--placeholder);opacity:1}
@@ -74,7 +74,7 @@ input::placeholder,textarea::placeholder{color:var(--placeholder);opacity:1}
 [data-theme="light"] .size-badge.on{color:var(--gold)}
 .mob-bar button{color:var(--text-body)}
 .mob-bar button.on{color:var(--gold)}
-/* Lisibilité renforcée — clair & sombre */
+/* LisibilitÃ© renforcÃ©e â€” clair & sombre */
 .data-table td,.check-row,.top-title,.login-card h1,.nav-item{color:var(--text)}
 .alert-list,.order-lines,.hero-preview.empty,.pw-card-empty,.pw-variant-count,
 .drive-info,.prod-thumb.empty,.upload-placeholder,.btn-ghost{color:var(--text-body)}
@@ -94,7 +94,7 @@ input::placeholder,textarea::placeholder{color:var(--placeholder);opacity:1}
 [data-theme="light"] .panel h2,
 [data-theme="light"] .wizard-section h3{color:var(--gold)}
 .upload-ico{opacity:.88}
-/* Icônes SVG & logos (clair + sombre) */
+/* IcÃ´nes SVG & logos (clair + sombre) */
 .ui-ico,.nav-item .nav-ico svg,.mob-bar .mob-ico svg,.menu-btn svg,.theme-switch button svg{
   display:block;flex-shrink:0;stroke:currentColor;fill:none;color:inherit;vector-effect:non-scaling-stroke;
 }
@@ -348,7 +348,7 @@ input::placeholder,textarea::placeholder{color:var(--placeholder);opacity:1}
 .wizard-actions{margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
 @media(max-width:899px){.wizard-preview{position:static}}
 
-/* Admin pro — produits & promotions */
+/* Admin pro â€” produits & promotions */
 .tabs-scroll{flex-wrap:wrap;max-width:100%}
 .bulk-bar{display:flex;flex-wrap:wrap;align-items:center;gap:10px;padding:12px 14px;margin-bottom:12px;background:rgba(189,160,97,.1);border:1px solid var(--gold);border-radius:4px;font-size:11px}
 .bulk-bar span{font-weight:600;color:var(--gold-lt)}
@@ -391,48 +391,48 @@ function toast(msg, type) {
 <script src="product-wizard.js?v=20260625color-photos"></script>
 <script src="admin-pro.js"></script>
 
-<!-- ═══════════════════════════════════════════════════════════════════════════════
-     GUIDE DES CLÉS API — ADMIN ERP (02-admin-erp/index.html)
-     TOUJOURS EN FIN DE FICHIER · Ctrl+End pour arriver ici
-     Référence complète : 03-google-apps-script/api_apps_script.gs (fin du fichier)
-     ═══════════════════════════════════════════════════════════════════════════════
+<!-- â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
+     GUIDE DES CLÃ‰S API â€” ADMIN ERP (02-admin-erp/index.html)
+     TOUJOURS EN FIN DE FICHIER Â· Ctrl+End pour arriver ici
+     RÃ©fÃ©rence complÃ¨te : 03-google-apps-script/api_apps_script.gs (fin du fichier)
+     â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
 
-     ┌─ #1 GOOGLE APPS SCRIPT — URL Web App (OBLIGATOIRE) ─────────────────────┐
-     │ Où coller : ERP_API_URL_DEFAULT ci-dessous (script erp-api-config)     │
-     │ Exemple   : 'https://script.google.com/macros/s/AKfycbz…/exec'         │
-     │ Même URL  : que 01-vitrine-client/index.html                             │
-     └──────────────────────────────────────────────────────────────────────────┘
+     â”Œâ”€ #1 GOOGLE APPS SCRIPT â€” URL Web App (OBLIGATOIRE) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+     â”‚ OÃ¹ coller : ERP_API_URL_DEFAULT ci-dessous (script erp-api-config)     â”‚
+     â”‚ Exemple   : 'https://script.google.com/macros/s/AKfycbzâ€¦/exec'         â”‚
+     â”‚ MÃªme URL  : que 01-vitrine-client/index.html                             â”‚
+     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 
-     ┌─ #2 STRIPE — Clé SECRÈTE sk_ (PAS dans ce fichier) ────────────────────┐
-     │ Où coller : Google Apps Script → Paramètres → Propriétés du script     │
-     │ Nom       : STRIPE_SECRET_KEY                                          │
-     │ Exemple   : sk_test_51TiHOcF66c2mP9HPjX7xZgJx1AEKz…                   │
-     └──────────────────────────────────────────────────────────────────────────┘
+     â”Œâ”€ #2 STRIPE â€” ClÃ© SECRÃˆTE sk_ (PAS dans ce fichier) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+     â”‚ OÃ¹ coller : Google Apps Script â†’ ParamÃ¨tres â†’ PropriÃ©tÃ©s du script     â”‚
+     â”‚ Nom       : STRIPE_SECRET_KEY                                          â”‚
+     â”‚ Exemple   : sk_test_51TiHOcF66c2mP9HPjX7xZgJx1AEKzâ€¦                   â”‚
+     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 
-     ┌─ #3 STRIPE — Clé PUBLIQUE pk_ (PAS ici — vitrine uniquement) ──────────┐
-     │ Où coller : 01-vitrine-client/index.html → STRIPE_PUBLISHABLE_KEY      │
-     └──────────────────────────────────────────────────────────────────────────┘
+     â”Œâ”€ #3 STRIPE â€” ClÃ© PUBLIQUE pk_ (PAS ici â€” vitrine uniquement) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”
+     â”‚ OÃ¹ coller : 01-vitrine-client/index.html â†’ STRIPE_PUBLISHABLE_KEY      â”‚
+     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 
-     ┌─ #4 FACTURALUSA + #5 CONTACT — via écran Admin (après connexion) ───────┐
-     │ Menu Admin → Boutique → sections :                                     │
-     │   • Paiements : Stripe actif, Afficher Stripe                          │
-     │   • Contact   : contact_phone, contact_whatsapp, emails                │
-     │   • Facturação: fiscal_provider, fiscal_api_key, fiscal_doc_type       │
-     │ Exemple clé : 26830|PEKDtgsOzbPjo0ymkXvrNqZtgCmmOrvAaSBlzIxS347b0431 │
-     │ Obtenir     : https://facturalusa.pt/u/subscription/api                │
-     │ (Équivalent Sheets : onglet CONFIG, colonnes chave / valor)           │
-     └──────────────────────────────────────────────────────────────────────────┘
+     â”Œâ”€ #4 FACTURALUSA + #5 CONTACT â€” via Ã©cran Admin (aprÃ¨s connexion) â”€â”€â”€â”€â”€â”€â”€â”
+     â”‚ Menu Admin â†’ Boutique â†’ sections :                                     â”‚
+     â”‚   â€¢ Paiements : Stripe actif, Afficher Stripe                          â”‚
+     â”‚   â€¢ Contact   : contact_phone, contact_whatsapp, emails                â”‚
+     â”‚   â€¢ FacturaÃ§Ã£o: fiscal_provider, fiscal_api_key, fiscal_doc_type       â”‚
+     â”‚ Exemple clÃ© : 26830|PEKDtgsOzbPjo0ymkXvrNqZtgCmmOrvAaSBlzIxS347b0431 â”‚
+     â”‚ Obtenir     : https://facturalusa.pt/u/subscription/api                â”‚
+     â”‚ (Ã‰quivalent Sheets : onglet CONFIG, colonnes chave / valor)           â”‚
+     â””â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”˜
 -->
 <script id="erp-api-config">
-  // ═══ CONFIGURATION API ADMIN — coller vos valeurs ici ═══
+  // â•â•â• CONFIGURATION API ADMIN â€” coller vos valeurs ici â•â•â•
   //
-  // #1 URL Web App Google Apps Script (obligatoire — même URL que la vitrine)
-  var ERP_API_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbzjeXiiobFsAFfMnTujXYkDZOca6dVHR3-__Vv2POTZWHcz2LONQRcpwTBZle-rh1XBbg/exec';
+  // #1 URL Web App Google Apps Script (obligatoire â€” mÃªme URL que la vitrine)
+  var ERP_API_URL_DEFAULT = 'https://script.google.com/macros/s/AKfycbwsqF6yzLPEFV1_VZW8PIh5FSKJvV_mjfytAuwj19pD1YlzcXxCxgZT43g60D686gxOfQ/exec';
   var API_URL = ERP_API_URL_DEFAULT;
   //
-  // #2 Stripe sk_ → GAS Propriétés script STRIPE_SECRET_KEY (pas ici)
-  // #3 Stripe pk_ → 01-vitrine-client/index.html uniquement
-  // #4 Facturalusa + #5 Contact → écran Admin → Boutique (ou feuille CONFIG)
+  // #2 Stripe sk_ â†’ GAS PropriÃ©tÃ©s script STRIPE_SECRET_KEY (pas ici)
+  // #3 Stripe pk_ â†’ 01-vitrine-client/index.html uniquement
+  // #4 Facturalusa + #5 Contact â†’ Ã©cran Admin â†’ Boutique (ou feuille CONFIG)
   // Guide complet : fin de 03-google-apps-script/api_apps_script.gs
 </script>
 <script src="icons-ui.js"></script>
