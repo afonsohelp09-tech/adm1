@@ -2850,19 +2850,43 @@
     }
   }
 
+  function printViaIframe_(html) {
+    try {
+      var existing = document.getElementById('azv-admin-print-frame');
+      if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+      var iframe = document.createElement('iframe');
+      iframe.id = 'azv-admin-print-frame';
+      iframe.setAttribute('aria-hidden', 'true');
+      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;';
+      document.body.appendChild(iframe);
+      var doc = iframe.contentWindow.document;
+      doc.open();
+      doc.write(html);
+      doc.close();
+      setTimeout(function () {
+        try { iframe.contentWindow.focus(); iframe.contentWindow.print(); } catch (e) { /* ignore */ }
+      }, 500);
+      return true;
+    } catch (e) { return false; }
+  }
+
   async function printOrderInvoice(orderId) {
     orderId = String(orderId || '').trim();
     if (!orderId) return;
     try {
       var res = await erpCall('getInvoiceData', { orderId: orderId });
       if (!res || !res.success || !res.html) { toast(t().error, 'e'); return; }
-      var w = window.open('', '_blank', 'noopener,noreferrer,width=820,height=960');
-      if (!w) { toast(t().error, 'e'); return; }
-      w.document.open();
-      w.document.write(res.html);
-      w.document.close();
-      w.focus();
-      setTimeout(function () { try { w.print(); } catch (e) { /* ignore */ } }, 450);
+      var w = null;
+      try { w = window.open('', '_blank', 'width=820,height=960'); } catch (eOpen) { w = null; }
+      if (w && w.document) {
+        w.document.open();
+        w.document.write(res.html);
+        w.document.close();
+        w.focus();
+        setTimeout(function () { try { w.print(); } catch (e) { /* ignore */ } }, 450);
+      } else {
+        printViaIframe_(res.html);
+      }
     } catch (e) { toast(apiErrMsg(e), 'e'); }
   }
 
